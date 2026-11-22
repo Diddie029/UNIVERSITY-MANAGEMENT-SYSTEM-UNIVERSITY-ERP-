@@ -1,0 +1,947 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Core non-PII user role and portal routing profile.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "role": {
+          "type": "string",
+          "enum": ["super_admin", "management", "admissions", "lecturer", "hod", "exam_officer", "finance", "hr", "student", "applicant"]
+        },
+        "departmentId": { "type": "string", "maxLength": 128 },
+        "programmeId": { "type": "string", "maxLength": 128 },
+        "studentId": { "type": "string", "maxLength": 128 },
+        "employeeId": { "type": "string", "maxLength": 128 },
+        "inviteId": { "type": "string", "maxLength": 128 },
+        "bindingId": { "type": "string", "maxLength": 128 },
+        "status": { "type": "string", "enum": ["active", "suspended"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "displayName", "role", "status", "createdAt", "updatedAt"]
+    },
+    "UserPrivatePII": {
+      "title": "UserPrivatePII",
+      "description": "Isolated PII document for user contact and national ID details.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "minLength": 3, "maxLength": 200 },
+        "phone": { "type": "string", "maxLength": 32 },
+        "nationalId": { "type": "string", "maxLength": 32 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "updatedAt"]
+    },
+    "RoleInvite": {
+      "title": "RoleInvite",
+      "description": "Admin-provisioned role binding keyed by lowercase email hash or normalized key.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "minLength": 3, "maxLength": 200 },
+        "role": { "type": "string", "enum": ["super_admin", "management", "admissions", "lecturer", "hod", "exam_officer", "finance", "hr", "student"] },
+        "departmentId": { "type": "string", "maxLength": 128 },
+        "assignedBy": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "role", "assignedBy", "createdAt"]
+    },
+    "Faculty": {
+      "title": "Faculty",
+      "description": "Academic faculty or school.",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "minLength": 2, "maxLength": 24 },
+        "name": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "deanName": { "type": "string", "maxLength": 120 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["code", "name", "createdAt"]
+    },
+    "Department": {
+      "title": "Department",
+      "description": "Academic or administrative department linked to a faculty.",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "minLength": 2, "maxLength": 24 },
+        "name": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "facultyId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "hodName": { "type": "string", "maxLength": 120 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["code", "name", "facultyId", "createdAt"]
+    },
+    "Programme": {
+      "title": "Programme",
+      "description": "Degree or diploma academic programme.",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "minLength": 2, "maxLength": 32 },
+        "name": { "type": "string", "minLength": 2, "maxLength": 180 },
+        "level": { "type": "string", "enum": ["Degree", "Diploma", "Masters", "PhD"] },
+        "departmentId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "durationYears": { "type": "number" },
+        "minKcseGrade": { "type": "string", "maxLength": 12 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["code", "name", "level", "departmentId", "durationYears", "createdAt"]
+    },
+    "Course": {
+      "title": "Course",
+      "description": "Academic course unit with credit hours and lecturer assignment.",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "minLength": 2, "maxLength": 24 },
+        "title": { "type": "string", "minLength": 2, "maxLength": 180 },
+        "programmeId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "departmentId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "yearLevel": { "type": "number" },
+        "semesterNumber": { "type": "number" },
+        "creditUnits": { "type": "number" },
+        "prerequisiteCode": { "type": "string", "maxLength": 24 },
+        "lecturerUid": { "type": "string", "maxLength": 128 },
+        "lecturerName": { "type": "string", "maxLength": 120 },
+        "schedule": { "type": "string", "maxLength": 160 },
+        "room": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["code", "title", "programmeId", "departmentId", "yearLevel", "semesterNumber", "creditUnits", "createdAt"]
+    },
+    "AcademicCalendar": {
+      "title": "AcademicCalendar",
+      "description": "Academic year and semester configuration.",
+      "type": "object",
+      "properties": {
+        "academicYear": { "type": "string", "minLength": 4, "maxLength": 32 },
+        "semesterName": { "type": "string", "minLength": 2, "maxLength": 64 },
+        "isActive": { "type": "boolean" },
+        "registrationOpen": { "type": "boolean" },
+        "marksEntryOpen": { "type": "boolean" },
+        "startDate": { "type": "string", "maxLength": 32 },
+        "endDate": { "type": "string", "maxLength": 32 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["academicYear", "semesterName", "isActive", "registrationOpen", "marksEntryOpen", "updatedAt"]
+    },
+    "StatutoryConfig": {
+      "title": "StatutoryConfig",
+      "description": "Configurable Kenyan payroll statutory rates and university grading scale.",
+      "type": "object",
+      "properties": {
+        "shifRate": { "type": "number" },
+        "housingLevyRate": { "type": "number" },
+        "nssfTier1Limit": { "type": "number" },
+        "nssfTier2Limit": { "type": "number" },
+        "nssfRate": { "type": "number" },
+        "personalRelief": { "type": "number" },
+        "payeBandsJson": { "type": "string", "maxLength": 2000 },
+        "gradingScaleJson": { "type": "string", "maxLength": 2000 },
+        "updatedBy": { "type": "string", "maxLength": 128 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["shifRate", "housingLevyRate", "nssfRate", "personalRelief", "updatedAt"]
+    },
+    "Application": {
+      "title": "Application",
+      "description": "Prospective student admission application.",
+      "type": "object",
+      "properties": {
+        "applicantUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "fullName": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "email": { "type": "string", "minLength": 3, "maxLength": 200 },
+        "phone": { "type": "string", "minLength": 5, "maxLength": 32 },
+        "nationalId": { "type": "string", "minLength": 4, "maxLength": 32 },
+        "kcseIndex": { "type": "string", "minLength": 4, "maxLength": 32 },
+        "kcseMeanGrade": { "type": "string", "minLength": 1, "maxLength": 8 },
+        "programmeId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "programmeName": { "type": "string", "minLength": 2, "maxLength": 180 },
+        "entryCategory": { "type": "string", "enum": ["KUCCPS", "Self-Sponsored"] },
+        "intake": { "type": "string", "minLength": 2, "maxLength": 64 },
+        "appFeePaybillRef": { "type": "string", "minLength": 4, "maxLength": 32 },
+        "status": { "type": "string", "enum": ["submitted", "under_review", "admitted", "rejected"] },
+        "generatedAdmissionNo": { "type": "string", "maxLength": 64 },
+        "reviewNotes": { "type": "string", "maxLength": 500 },
+        "reviewedBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["applicantUid", "fullName", "email", "phone", "nationalId", "kcseMeanGrade", "programmeId", "entryCategory", "appFeePaybillRef", "status", "createdAt", "updatedAt"]
+    },
+    "Student": {
+      "title": "Student",
+      "description": "Enrolled student academic and clearance record.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "admissionNo": { "type": "string", "minLength": 4, "maxLength": 64 },
+        "fullName": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "email": { "type": "string", "maxLength": 200 },
+        "phone": { "type": "string", "maxLength": 32 },
+        "nationalId": { "type": "string", "maxLength": 32 },
+        "programmeId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "programmeName": { "type": "string", "maxLength": 180 },
+        "departmentId": { "type": "string", "maxLength": 128 },
+        "facultyId": { "type": "string", "maxLength": 128 },
+        "yearOfStudy": { "type": "number" },
+        "semester": { "type": "number" },
+        "category": { "type": "string", "enum": ["KUCCPS", "Self-Sponsored"] },
+        "academicStatus": { "type": "string", "enum": ["Active", "Academic Leave", "Deferred", "Graduated", "Discontinued"] },
+        "clearanceFinance": { "type": "boolean" },
+        "clearanceLibrary": { "type": "boolean" },
+        "clearanceDepartment": { "type": "boolean" },
+        "clearanceExams": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["admissionNo", "fullName", "programmeId", "yearOfStudy", "semester", "category", "academicStatus", "createdAt", "updatedAt"]
+    },
+    "CourseRegistration": {
+      "title": "CourseRegistration",
+      "description": "Student semester and course unit registration.",
+      "type": "object",
+      "properties": {
+        "studentId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "studentUid": { "type": "string", "maxLength": 128 },
+        "admissionNo": { "type": "string", "minLength": 2, "maxLength": 64 },
+        "studentName": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "academicYear": { "type": "string", "minLength": 4, "maxLength": 32 },
+        "semesterName": { "type": "string", "minLength": 2, "maxLength": 64 },
+        "courseId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "courseCode": { "type": "string", "minLength": 2, "maxLength": 24 },
+        "courseTitle": { "type": "string", "minLength": 2, "maxLength": 180 },
+        "creditUnits": { "type": "number" },
+        "status": { "type": "string", "enum": ["registered", "dropped"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["studentId", "admissionNo", "studentName", "academicYear", "semesterName", "courseId", "courseCode", "courseTitle", "creditUnits", "status", "createdAt"]
+    },
+    "AttendanceSession": {
+      "title": "AttendanceSession",
+      "description": "Lecturer class attendance session.",
+      "type": "object",
+      "properties": {
+        "courseId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "courseCode": { "type": "string", "minLength": 2, "maxLength": 24 },
+        "lecturerUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "sessionDate": { "type": "string", "minLength": 4, "maxLength": 32 },
+        "topic": { "type": "string", "minLength": 2, "maxLength": 200 },
+        "presentCount": { "type": "number" },
+        "totalEnrolled": { "type": "number" },
+        "presentStudentIds": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["courseId", "courseCode", "lecturerUid", "sessionDate", "topic", "presentCount", "totalEnrolled", "createdAt"]
+    },
+    "ExamMark": {
+      "title": "ExamMark",
+      "description": "Course assessment and exam marks with multi-stage academic approval.",
+      "type": "object",
+      "properties": {
+        "studentId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "studentUid": { "type": "string", "maxLength": 128 },
+        "admissionNo": { "type": "string", "minLength": 2, "maxLength": 64 },
+        "studentName": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "courseId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "courseCode": { "type": "string", "minLength": 2, "maxLength": 24 },
+        "courseTitle": { "type": "string", "minLength": 2, "maxLength": 180 },
+        "creditUnits": { "type": "number" },
+        "academicYear": { "type": "string", "minLength": 4, "maxLength": 32 },
+        "semesterName": { "type": "string", "minLength": 2, "maxLength": 64 },
+        "catScore": { "type": "number" },
+        "examScore": { "type": "number" },
+        "totalScore": { "type": "number" },
+        "grade": { "type": "string", "minLength": 1, "maxLength": 4 },
+        "gradePoints": { "type": "number" },
+        "workflowStatus": { "type": "string", "enum": ["draft", "submitted", "moderated", "approved", "published"] },
+        "updatedBy": { "type": "string", "maxLength": 128 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["studentId", "admissionNo", "studentName", "courseId", "courseCode", "academicYear", "semesterName", "catScore", "examScore", "totalScore", "grade", "workflowStatus", "updatedAt"]
+    },
+    "FeeStructure": {
+      "title": "FeeStructure",
+      "description": "Fee schedule per programme, semester, and sponsorship category.",
+      "type": "object",
+      "properties": {
+        "programmeId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "programmeName": { "type": "string", "minLength": 2, "maxLength": 180 },
+        "academicYear": { "type": "string", "minLength": 4, "maxLength": 32 },
+        "semesterName": { "type": "string", "minLength": 2, "maxLength": 64 },
+        "category": { "type": "string", "enum": ["KUCCPS", "Self-Sponsored"] },
+        "tuitionFee": { "type": "number" },
+        "examFee": { "type": "number" },
+        "libraryMedicalFee": { "type": "number" },
+        "activityIctFee": { "type": "number" },
+        "totalFee": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["programmeId", "programmeName", "academicYear", "semesterName", "category", "tuitionFee", "totalFee", "updatedAt"]
+    },
+    "StudentAccount": {
+      "title": "StudentAccount",
+      "description": "Live financial ledger summary for an enrolled student.",
+      "type": "object",
+      "properties": {
+        "studentId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "studentUid": { "type": "string", "maxLength": 128 },
+        "admissionNo": { "type": "string", "minLength": 2, "maxLength": 64 },
+        "studentName": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "totalBilled": { "type": "number" },
+        "totalPaid": { "type": "number" },
+        "scholarshipsTotal": { "type": "number" },
+        "balance": { "type": "number" },
+        "cleared": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["studentId", "admissionNo", "studentName", "totalBilled", "totalPaid", "scholarshipsTotal", "balance", "cleared", "updatedAt"]
+    },
+    "PaymentSubmission": {
+      "title": "PaymentSubmission",
+      "description": "M-PESA Paybill or Bank payment reference awaiting Finance Officer verification.",
+      "type": "object",
+      "properties": {
+        "studentId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "studentUid": { "type": "string", "maxLength": 128 },
+        "admissionNo": { "type": "string", "minLength": 2, "maxLength": 64 },
+        "studentName": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "channel": { "type": "string", "enum": ["M-PESA Paybill", "Bank Deposit", "EFT Transfer", "HELB Disbursement"] },
+        "referenceCode": { "type": "string", "minLength": 4, "maxLength": 48 },
+        "payerPhoneOrBank": { "type": "string", "minLength": 3, "maxLength": 80 },
+        "amount": { "type": "number" },
+        "paymentDate": { "type": "string", "minLength": 4, "maxLength": 32 },
+        "status": { "type": "string", "enum": ["pending_verification", "verified", "rejected"] },
+        "verifiedBy": { "type": "string", "maxLength": 128 },
+        "rejectionReason": { "type": "string", "maxLength": 300 },
+        "receiptNumber": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["studentId", "admissionNo", "studentName", "channel", "referenceCode", "amount", "paymentDate", "status", "createdAt", "updatedAt"]
+    },
+    "Receipt": {
+      "title": "Receipt",
+      "description": "Official university receipt generated strictly after Finance verification.",
+      "type": "object",
+      "properties": {
+        "receiptNumber": { "type": "string", "minLength": 4, "maxLength": 64 },
+        "paymentId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "studentId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "studentUid": { "type": "string", "maxLength": 128 },
+        "admissionNo": { "type": "string", "minLength": 2, "maxLength": 64 },
+        "studentName": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "channel": { "type": "string", "minLength": 2, "maxLength": 64 },
+        "referenceCode": { "type": "string", "minLength": 4, "maxLength": 48 },
+        "amount": { "type": "number" },
+        "issuedBy": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "issuedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["receiptNumber", "paymentId", "studentId", "admissionNo", "studentName", "channel", "referenceCode", "amount", "issuedBy", "issuedAt"]
+    },
+    "ScholarshipAward": {
+      "title": "ScholarshipAward",
+      "description": "HELB loan, bursary, or institutional scholarship credit.",
+      "type": "object",
+      "properties": {
+        "studentId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "admissionNo": { "type": "string", "minLength": 2, "maxLength": 64 },
+        "studentName": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "awardType": { "type": "string", "enum": ["HELB", "County Bursary", "Merit Scholarship", "CDF Bursary"] },
+        "referenceNo": { "type": "string", "minLength": 3, "maxLength": 64 },
+        "amount": { "type": "number" },
+        "academicYear": { "type": "string", "minLength": 4, "maxLength": 32 },
+        "awardedBy": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["studentId", "admissionNo", "studentName", "awardType", "referenceNo", "amount", "academicYear", "awardedBy", "createdAt"]
+    },
+    "Employee": {
+      "title": "Employee",
+      "description": "University academic or administrative staff profile and compensation.",
+      "type": "object",
+      "properties": {
+        "staffNo": { "type": "string", "minLength": 3, "maxLength": 48 },
+        "uid": { "type": "string", "maxLength": 128 },
+        "fullName": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "email": { "type": "string", "minLength": 3, "maxLength": 200 },
+        "departmentId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "departmentName": { "type": "string", "maxLength": 160 },
+        "jobTitle": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "employmentCategory": { "type": "string", "enum": ["Permanent", "Contract", "Part-Time", "Temporary"] },
+        "basicSalary": { "type": "number" },
+        "houseAllowance": { "type": "number" },
+        "commuterAllowance": { "type": "number" },
+        "pensionContribution": { "type": "number" },
+        "kraPin": { "type": "string", "maxLength": 24 },
+        "bankName": { "type": "string", "maxLength": 80 },
+        "bankAccountMasked": { "type": "string", "maxLength": 32 },
+        "status": { "type": "string", "enum": ["Active", "On Leave", "Terminated"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["staffNo", "fullName", "email", "departmentId", "jobTitle", "employmentCategory", "basicSalary", "status", "createdAt", "updatedAt"]
+    },
+    "LeaveRequest": {
+      "title": "LeaveRequest",
+      "description": "Employee leave request and HR approval record.",
+      "type": "object",
+      "properties": {
+        "employeeId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "employeeUid": { "type": "string", "maxLength": 128 },
+        "staffNo": { "type": "string", "minLength": 2, "maxLength": 48 },
+        "employeeName": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "leaveType": { "type": "string", "enum": ["Annual", "Sick", "Maternity/Paternity", "Study", "Compassionate"] },
+        "startDate": { "type": "string", "minLength": 4, "maxLength": 32 },
+        "endDate": { "type": "string", "minLength": 4, "maxLength": 32 },
+        "days": { "type": "number" },
+        "reason": { "type": "string", "minLength": 3, "maxLength": 400 },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "reviewedBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["employeeId", "staffNo", "employeeName", "leaveType", "startDate", "endDate", "days", "reason", "status", "createdAt", "updatedAt"]
+    },
+    "PayrollRun": {
+      "title": "PayrollRun",
+      "description": "Monthly university payroll batch summary.",
+      "type": "object",
+      "properties": {
+        "monthLabel": { "type": "string", "minLength": 3, "maxLength": 40 },
+        "employeeCount": { "type": "number" },
+        "totalGross": { "type": "number" },
+        "totalPaye": { "type": "number" },
+        "totalNssf": { "type": "number" },
+        "totalShif": { "type": "number" },
+        "totalHousingLevy": { "type": "number" },
+        "totalNetPay": { "type": "number" },
+        "status": { "type": "string", "enum": ["draft", "approved", "paid"] },
+        "preparedBy": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "approvedBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["monthLabel", "employeeCount", "totalGross", "totalPaye", "totalNssf", "totalShif", "totalHousingLevy", "totalNetPay", "status", "preparedBy", "createdAt", "updatedAt"]
+    },
+    "Payslip": {
+      "title": "Payslip",
+      "description": "Individual monthly employee statutory payslip inside a payroll run.",
+      "type": "object",
+      "properties": {
+        "runId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "monthLabel": { "type": "string", "minLength": 3, "maxLength": 40 },
+        "employeeId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "employeeUid": { "type": "string", "maxLength": 128 },
+        "staffNo": { "type": "string", "minLength": 2, "maxLength": 48 },
+        "employeeName": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "jobTitle": { "type": "string", "maxLength": 120 },
+        "basicSalary": { "type": "number" },
+        "allowances": { "type": "number" },
+        "grossPay": { "type": "number" },
+        "nssf": { "type": "number" },
+        "shif": { "type": "number" },
+        "housingLevy": { "type": "number" },
+        "pension": { "type": "number" },
+        "taxablePay": { "type": "number" },
+        "paye": { "type": "number" },
+        "netPay": { "type": "number" },
+        "bankName": { "type": "string", "maxLength": 80 },
+        "bankAccountMasked": { "type": "string", "maxLength": 32 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["runId", "monthLabel", "employeeId", "staffNo", "employeeName", "basicSalary", "grossPay", "nssf", "shif", "housingLevy", "paye", "netPay", "createdAt"]
+    },
+    "Notice": {
+      "title": "Notice",
+      "description": "Official university circular, campus event, or admission advertisement.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "minLength": 3, "maxLength": 200 },
+        "body": { "type": "string", "minLength": 5, "maxLength": 2000 },
+        "category": { "type": "string", "enum": ["Admission Intake", "Academic Circular", "Campus Event", "Fee & Finance", "Scholarship / Advert"] },
+        "audience": { "type": "string", "enum": ["All", "Students", "Staff"] },
+        "pinned": { "type": "boolean" },
+        "eventDate": { "type": "string", "maxLength": 32 },
+        "ctaLabel": { "type": "string", "maxLength": 64 },
+        "authorName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "body", "audience", "authorName", "createdAt"]
+    },
+    "PortalBinding": {
+      "title": "PortalBinding",
+      "description": "Student admission number or staff number credential binding for portal login.",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "minLength": 3, "maxLength": 64 },
+        "targetType": { "type": "string", "enum": ["student", "employee"] },
+        "targetId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "role": { "type": "string", "enum": ["student", "lecturer", "hod", "exam_officer", "finance", "hr", "admissions", "management"] },
+        "fullName": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "verificationHash": { "type": "string", "minLength": 8, "maxLength": 128 },
+        "boundUid": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["code", "targetType", "targetId", "role", "fullName", "verificationHash", "createdAt"]
+    },
+    "SupportTicket": {
+      "title": "SupportTicket",
+      "description": "Student or staff complaint and service ticket.",
+      "type": "object",
+      "properties": {
+        "requesterUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "requesterName": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "category": { "type": "string", "enum": ["Academic", "Finance", "Admissions", "ICT", "Welfare"] },
+        "subject": { "type": "string", "minLength": 3, "maxLength": 200 },
+        "description": { "type": "string", "minLength": 5, "maxLength": 2000 },
+        "status": { "type": "string", "enum": ["open", "in_progress", "resolved"] },
+        "resolutionNote": { "type": "string", "maxLength": 1000 },
+        "assignedTo": { "type": "string", "maxLength": 120 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["requesterUid", "requesterName", "category", "subject", "description", "status", "createdAt", "updatedAt"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Immutable append-only audit trail for financial, academic, payroll, and permission events.",
+      "type": "object",
+      "properties": {
+        "actorUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "actorName": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "actorRole": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "action": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "entityPath": { "type": "string", "minLength": 2, "maxLength": 240 },
+        "details": { "type": "string", "minLength": 2, "maxLength": 1000 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["actorUid", "actorName", "actorRole", "action", "entityPath", "details", "createdAt"]
+    },
+    "CourseResource": {
+      "title": "CourseResource",
+      "description": "Books, lecture notes, past papers, lab manuals, and study materials uploaded by lecturers.",
+      "type": "object",
+      "properties": {
+        "courseId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "courseCode": { "type": "string", "minLength": 2, "maxLength": 24 },
+        "courseTitle": { "type": "string", "minLength": 2, "maxLength": 180 },
+        "title": { "type": "string", "minLength": 2, "maxLength": 200 },
+        "resourceType": { "type": "string", "enum": ["Textbook / E-Book", "Lecture Notes", "Past Paper", "Lab Manual", "Video Lecture"] },
+        "authorOrEdition": { "type": "string", "maxLength": 120 },
+        "summary": { "type": "string", "maxLength": 1200 },
+        "contentBody": { "type": "string", "maxLength": 8000 },
+        "resourceUrl": { "type": "string", "maxLength": 500 },
+        "fileName": { "type": "string", "maxLength": 180 },
+        "fileDataUrl": { "type": "string", "maxLength": 360000 },
+        "uploadedByUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "uploadedByName": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["courseId", "courseCode", "courseTitle", "title", "resourceType", "uploadedByUid", "uploadedByName", "createdAt", "updatedAt"]
+    },
+    "OnlineClass": {
+      "title": "OnlineClass",
+      "description": "Scheduled or live virtual lecture session hosted by a lecturer.",
+      "type": "object",
+      "properties": {
+        "courseId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "courseCode": { "type": "string", "minLength": 2, "maxLength": 24 },
+        "courseTitle": { "type": "string", "minLength": 2, "maxLength": 180 },
+        "title": { "type": "string", "minLength": 2, "maxLength": 200 },
+        "topicSummary": { "type": "string", "maxLength": 1000 },
+        "platform": { "type": "string", "enum": ["PUST Virtual Room", "Google Meet", "Zoom", "Microsoft Teams"] },
+        "meetingUrl": { "type": "string", "maxLength": 500 },
+        "passcode": { "type": "string", "maxLength": 64 },
+        "scheduledStart": { "type": "string", "minLength": 4, "maxLength": 64 },
+        "durationMinutes": { "type": "number" },
+        "status": { "type": "string", "enum": ["scheduled", "live", "completed"] },
+        "lecturerUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "lecturerName": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["courseId", "courseCode", "courseTitle", "title", "platform", "scheduledStart", "durationMinutes", "status", "lecturerUid", "lecturerName", "createdAt", "updatedAt"]
+    },
+    "ClassMessage": {
+      "title": "ClassMessage",
+      "description": "Live virtual classroom Q&A message or student attendance check-in.",
+      "type": "object",
+      "properties": {
+        "classId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "senderUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "senderName": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "senderRole": { "type": "string", "enum": ["lecturer", "student"] },
+        "kind": { "type": "string", "enum": ["chat", "checkin"] },
+        "body": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["classId", "senderUid", "senderName", "senderRole", "kind", "body", "createdAt"]
+    },
+    "OnlineAssessment": {
+      "title": "OnlineAssessment",
+      "description": "Online CAT or Online Exam created and published by a lecturer.",
+      "type": "object",
+      "properties": {
+        "courseId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "courseCode": { "type": "string", "minLength": 2, "maxLength": 24 },
+        "courseTitle": { "type": "string", "minLength": 2, "maxLength": 180 },
+        "assessmentType": { "type": "string", "enum": ["Online CAT", "Online Exam"] },
+        "title": { "type": "string", "minLength": 2, "maxLength": 200 },
+        "instructions": { "type": "string", "maxLength": 1500 },
+        "durationMinutes": { "type": "number" },
+        "dueDate": { "type": "string", "minLength": 4, "maxLength": 64 },
+        "totalMarks": { "type": "number" },
+        "status": { "type": "string", "enum": ["draft", "published", "closed"] },
+        "questions": { "type": "array" },
+        "createdByUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdByName": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["courseId", "courseCode", "courseTitle", "assessmentType", "title", "durationMinutes", "dueDate", "totalMarks", "status", "questions", "createdByUid", "createdByName", "createdAt", "updatedAt"]
+    },
+    "AssessmentSubmission": {
+      "title": "AssessmentSubmission",
+      "description": "Student attempt and grading record for an online CAT or exam.",
+      "type": "object",
+      "properties": {
+        "assessmentId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "assessmentTitle": { "type": "string", "minLength": 2, "maxLength": 200 },
+        "assessmentType": { "type": "string", "enum": ["Online CAT", "Online Exam"] },
+        "courseId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "courseCode": { "type": "string", "minLength": 2, "maxLength": 24 },
+        "studentId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "studentUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "admissionNo": { "type": "string", "minLength": 2, "maxLength": 64 },
+        "studentName": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "answers": { "type": "array" },
+        "autoScore": { "type": "number" },
+        "totalScore": { "type": "number" },
+        "maxMarks": { "type": "number" },
+        "status": { "type": "string", "enum": ["submitted", "graded"] },
+        "feedback": { "type": "string", "maxLength": 1000 },
+        "gradedBy": { "type": "string", "maxLength": 128 },
+        "submittedAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["assessmentId", "assessmentTitle", "assessmentType", "courseId", "courseCode", "studentId", "studentUid", "admissionNo", "studentName", "answers", "autoScore", "totalScore", "maxMarks", "status", "submittedAt", "updatedAt"]
+    },
+    "CourseAssignment": {
+      "title": "CourseAssignment",
+      "description": "Coursework assignment uploaded by a lecturer with optional attachment and due date.",
+      "type": "object",
+      "properties": {
+        "courseId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "courseCode": { "type": "string", "minLength": 2, "maxLength": 24 },
+        "courseTitle": { "type": "string", "minLength": 2, "maxLength": 180 },
+        "title": { "type": "string", "minLength": 2, "maxLength": 200 },
+        "instructions": { "type": "string", "minLength": 3, "maxLength": 2500 },
+        "dueDate": { "type": "string", "minLength": 4, "maxLength": 64 },
+        "maxMarks": { "type": "number" },
+        "status": { "type": "string", "enum": ["open", "closed"] },
+        "resourceUrl": { "type": "string", "maxLength": 500 },
+        "fileName": { "type": "string", "maxLength": 180 },
+        "fileDataUrl": { "type": "string", "maxLength": 360000 },
+        "createdByUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdByName": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["courseId", "courseCode", "courseTitle", "title", "instructions", "dueDate", "maxMarks", "status", "createdByUid", "createdByName", "createdAt", "updatedAt"]
+    },
+    "AssignmentSubmission": {
+      "title": "AssignmentSubmission",
+      "description": "Student assignment submission and lecturer grading record.",
+      "type": "object",
+      "properties": {
+        "assignmentId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "assignmentTitle": { "type": "string", "minLength": 2, "maxLength": 200 },
+        "courseId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "courseCode": { "type": "string", "minLength": 2, "maxLength": 24 },
+        "studentId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "studentUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "admissionNo": { "type": "string", "minLength": 2, "maxLength": 64 },
+        "studentName": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "submissionText": { "type": "string", "minLength": 2, "maxLength": 4000 },
+        "submissionUrl": { "type": "string", "maxLength": 500 },
+        "fileName": { "type": "string", "maxLength": 180 },
+        "fileDataUrl": { "type": "string", "maxLength": 360000 },
+        "score": { "type": "number" },
+        "maxMarks": { "type": "number" },
+        "status": { "type": "string", "enum": ["submitted", "graded"] },
+        "feedback": { "type": "string", "maxLength": 1000 },
+        "gradedBy": { "type": "string", "maxLength": 128 },
+        "submittedAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["assignmentId", "assignmentTitle", "courseId", "courseCode", "studentId", "studentUid", "admissionNo", "studentName", "submissionText", "status", "submittedAt", "updatedAt"]
+    },
+    "StudentNotification": {
+      "title": "StudentNotification",
+      "description": "Real-time notification alert for students when lecturers post new grades, assignments, or assessments.",
+      "type": "object",
+      "properties": {
+        "targetScope": { "type": "string", "enum": ["course", "student"] },
+        "targetStudentId": { "type": "string", "maxLength": 128 },
+        "targetStudentUid": { "type": "string", "maxLength": 128 },
+        "courseId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "courseCode": { "type": "string", "minLength": 2, "maxLength": 24 },
+        "courseTitle": { "type": "string", "maxLength": 180 },
+        "category": { "type": "string", "enum": ["grade", "assignment", "assessment"] },
+        "title": { "type": "string", "minLength": 2, "maxLength": 200 },
+        "message": { "type": "string", "minLength": 2, "maxLength": 600 },
+        "sourceCollection": { "type": "string", "enum": ["course_assignments", "assignment_submissions", "online_assessments", "assessment_submissions"] },
+        "sourceId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "isRead": { "type": "boolean" },
+        "createdByUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdByName": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["targetScope", "courseId", "courseCode", "category", "title", "message", "sourceCollection", "sourceId", "isRead", "createdByUid", "createdByName", "createdAt", "updatedAt"]
+    },
+    "NotificationRead": {
+      "title": "NotificationRead",
+      "description": "Per-user read marker for course-wide academic notifications.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "notifId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "readAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "notifId", "readAt"]
+    },
+    "StudyGroup": {
+      "title": "StudyGroup",
+      "description": "Collaborative course-specific virtual study room created by students or academic staff.",
+      "type": "object",
+      "properties": {
+        "courseId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "courseCode": { "type": "string", "minLength": 2, "maxLength": 24 },
+        "courseTitle": { "type": "string", "minLength": 2, "maxLength": 180 },
+        "name": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "topic": { "type": "string", "minLength": 2, "maxLength": 500 },
+        "scheduleNote": { "type": "string", "maxLength": 160 },
+        "meetingUrl": { "type": "string", "maxLength": 500 },
+        "sharedNotes": { "type": "string", "maxLength": 8000 },
+        "sharedNotesUpdatedBy": { "type": "string", "maxLength": 160 },
+        "status": { "type": "string", "enum": ["active", "archived"] },
+        "maxMembers": { "type": "number" },
+        "memberCount": { "type": "number" },
+        "creatorUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "creatorName": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "creatorAdmissionNo": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["courseId", "courseCode", "courseTitle", "name", "topic", "status", "maxMembers", "memberCount", "creatorUid", "creatorName", "createdAt", "updatedAt"]
+    },
+    "StudyGroupMember": {
+      "title": "StudyGroupMember",
+      "description": "Participant membership record inside a collaborative study group room.",
+      "type": "object",
+      "properties": {
+        "groupId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "studentId": { "type": "string", "maxLength": 128 },
+        "admissionNo": { "type": "string", "maxLength": 64 },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "role": { "type": "string", "enum": ["host", "member"] },
+        "joinedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["groupId", "uid", "displayName", "role", "joinedAt"]
+    },
+    "StudyGroupMessage": {
+      "title": "StudyGroupMessage",
+      "description": "Real-time collaborative discussion or shared resource message in a study group.",
+      "type": "object",
+      "properties": {
+        "groupId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "senderUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "senderName": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "senderAdmissionNo": { "type": "string", "maxLength": 64 },
+        "kind": { "type": "string", "enum": ["chat", "resource_share", "system"] },
+        "body": { "type": "string", "minLength": 1, "maxLength": 1500 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["groupId", "senderUid", "senderName", "kind", "body", "createdAt"]
+    },
+    "StudyGroupMembershipIndex": {
+      "title": "StudyGroupMembershipIndex",
+      "description": "Per-user study group membership index for fast room membership lookups.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "groupId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "role": { "type": "string", "enum": ["host", "member"] },
+        "joinedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "groupId", "role", "joinedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Non-PII user role and portal assignment."
+    },
+    "/users/{uid}/private/{docId}": {
+      "schema": { "$ref": "#/entities/UserPrivatePII" },
+      "description": "Owner-restricted PII subcollection."
+    },
+    "/users/{uid}/notification_reads/{notifId}": {
+      "schema": { "$ref": "#/entities/NotificationRead" },
+      "description": "Per-student read receipt markers for course-wide notifications."
+    },
+    "/users/{uid}/study_group_memberships/{groupId}": {
+      "schema": { "$ref": "#/entities/StudyGroupMembershipIndex" },
+      "description": "Per-user study group membership index."
+    },
+    "/role_invites/{emailKey}": {
+      "schema": { "$ref": "#/entities/RoleInvite" },
+      "description": "Admin-managed role invitations keyed by normalized email."
+    },
+    "/faculties/{facultyId}": {
+      "schema": { "$ref": "#/entities/Faculty" },
+      "description": "University faculties."
+    },
+    "/departments/{deptId}": {
+      "schema": { "$ref": "#/entities/Department" },
+      "description": "University departments."
+    },
+    "/programmes/{progId}": {
+      "schema": { "$ref": "#/entities/Programme" },
+      "description": "Academic programmes."
+    },
+    "/courses/{courseId}": {
+      "schema": { "$ref": "#/entities/Course" },
+      "description": "Academic course units."
+    },
+    "/academic_calendars/{calendarId}": {
+      "schema": { "$ref": "#/entities/AcademicCalendar" },
+      "description": "Active semester and calendar configuration."
+    },
+    "/statutory_configs/{configId}": {
+      "schema": { "$ref": "#/entities/StatutoryConfig" },
+      "description": "Kenyan statutory payroll and grading configuration."
+    },
+    "/applications/{appId}": {
+      "schema": { "$ref": "#/entities/Application" },
+      "description": "Prospective student admission applications."
+    },
+    "/students/{studentId}": {
+      "schema": { "$ref": "#/entities/Student" },
+      "description": "Enrolled student profiles and clearance flags."
+    },
+    "/course_registrations/{regId}": {
+      "schema": { "$ref": "#/entities/CourseRegistration" },
+      "description": "Semester course unit registrations."
+    },
+    "/attendance_sessions/{sessionId}": {
+      "schema": { "$ref": "#/entities/AttendanceSession" },
+      "description": "Class attendance records."
+    },
+    "/exam_marks/{markId}": {
+      "schema": { "$ref": "#/entities/ExamMark" },
+      "description": "Course assessment and examination marks."
+    },
+    "/fee_structures/{structureId}": {
+      "schema": { "$ref": "#/entities/FeeStructure" },
+      "description": "Tuition and statutory fee schedules."
+    },
+    "/student_accounts/{studentId}": {
+      "schema": { "$ref": "#/entities/StudentAccount" },
+      "description": "Student fee account balances."
+    },
+    "/payment_submissions/{paymentId}": {
+      "schema": { "$ref": "#/entities/PaymentSubmission" },
+      "description": "M-PESA Paybill and bank payment submissions pending verification."
+    },
+    "/receipts/{receiptId}": {
+      "schema": { "$ref": "#/entities/Receipt" },
+      "description": "Verified official university payment receipts."
+    },
+    "/scholarships/{awardId}": {
+      "schema": { "$ref": "#/entities/ScholarshipAward" },
+      "description": "HELB and scholarship awards."
+    },
+    "/employees/{empId}": {
+      "schema": { "$ref": "#/entities/Employee" },
+      "description": "University staff directory and payroll basis."
+    },
+    "/leave_requests/{leaveId}": {
+      "schema": { "$ref": "#/entities/LeaveRequest" },
+      "description": "Employee leave applications."
+    },
+    "/payroll_runs/{runId}": {
+      "schema": { "$ref": "#/entities/PayrollRun" },
+      "description": "Monthly payroll run headers."
+    },
+    "/payroll_runs/{runId}/payslips/{payslipId}": {
+      "schema": { "$ref": "#/entities/Payslip" },
+      "description": "Individual monthly payslips."
+    },
+    "/notices/{noticeId}": {
+      "schema": { "$ref": "#/entities/Notice" },
+      "description": "Institutional notices and campus adverts."
+    },
+    "/portal_bindings/{bindingId}": {
+      "schema": { "$ref": "#/entities/PortalBinding" },
+      "description": "Student registration number and staff number bindings."
+    },
+    "/support_tickets/{ticketId}": {
+      "schema": { "$ref": "#/entities/SupportTicket" },
+      "description": "Student and staff support tickets."
+    },
+    "/audit_logs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Immutable institutional audit log."
+    },
+    "/course_resources/{resourceId}": {
+      "schema": { "$ref": "#/entities/CourseResource" },
+      "description": "Course books, lecture notes, past papers, and study guides."
+    },
+    "/online_classes/{classId}": {
+      "schema": { "$ref": "#/entities/OnlineClass" },
+      "description": "Scheduled and live virtual classes."
+    },
+    "/online_classes/{classId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/ClassMessage" },
+      "description": "Live classroom chat and student attendance check-ins."
+    },
+    "/online_assessments/{assessmentId}": {
+      "schema": { "$ref": "#/entities/OnlineAssessment" },
+      "description": "Online CATs and Online Exams."
+    },
+    "/assessment_submissions/{submissionId}": {
+      "schema": { "$ref": "#/entities/AssessmentSubmission" },
+      "description": "Student online CAT/Exam submissions and scores."
+    },
+    "/course_assignments/{assignmentId}": {
+      "schema": { "$ref": "#/entities/CourseAssignment" },
+      "description": "Lecturer assignments and coursework briefs."
+    },
+    "/assignment_submissions/{submissionId}": {
+      "schema": { "$ref": "#/entities/AssignmentSubmission" },
+      "description": "Student assignment submissions and lecturer feedback."
+    },
+    "/student_notifications/{notifId}": {
+      "schema": { "$ref": "#/entities/StudentNotification" },
+      "description": "Real-time notifications for student grade postings, assignments, and online assessments."
+    },
+    "/study_groups/{groupId}": {
+      "schema": { "$ref": "#/entities/StudyGroup" },
+      "description": "Collaborative course-specific virtual study group rooms."
+    },
+    "/study_groups/{groupId}/members/{memberUid}": {
+      "schema": { "$ref": "#/entities/StudyGroupMember" },
+      "description": "Members enrolled in a collaborative study group."
+    },
+    "/study_groups/{groupId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/StudyGroupMessage" },
+      "description": "Real-time study group chat messages and shared course resource references."
+    }
+  }
+}

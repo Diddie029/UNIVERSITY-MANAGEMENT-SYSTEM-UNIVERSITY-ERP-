@@ -1,0 +1,1412 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Pillar 4.1: Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Pillar 3: Global Hardened Helpers
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && (
+        request.auth.token.email_verified == true ||
+        request.auth.token.firebase.sign_in_provider == 'password'
+      );
+    }
+
+    function isBootstrappedAdmin() {
+      return isEmailVerified() && request.auth.token.email == 'greenedidymus@gmail.com';
+    }
+
+    function hasUserDoc() {
+      return isVerifiedUser() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function userRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin() || (hasUserDoc() && userRole() == 'super_admin');
+    }
+
+    function isManagement() {
+      return isAdmin() || (hasUserDoc() && userRole() == 'management');
+    }
+
+    function isAdmissions() {
+      return isAdmin() || (hasUserDoc() && userRole() in ['admissions', 'management']);
+    }
+
+    function isAcademicStaff() {
+      return isAdmin() || (hasUserDoc() && userRole() in ['lecturer', 'hod', 'exam_officer', 'management']);
+    }
+
+    function isHOD() {
+      return isAdmin() || (hasUserDoc() && userRole() == 'hod');
+    }
+
+    function isExamPublisher() {
+      return isAdmin() || (hasUserDoc() && userRole() == 'exam_officer');
+    }
+
+    function isFinance() {
+      return isAdmin() || (hasUserDoc() && userRole() in ['finance', 'management']);
+    }
+
+    function isHR() {
+      return isAdmin() || (hasUserDoc() && userRole() in ['hr', 'management']);
+    }
+
+    function isStudent() {
+      return hasUserDoc() && userRole() == 'student';
+    }
+
+    function isStr(val, minLen, maxLen) {
+      return val is string && val.size() >= minLen && val.size() <= maxLen;
+    }
+
+    function isOptStr(val, maxLen) {
+      return val is string && val.size() <= maxLen;
+    }
+
+    // Startup connection check document
+    match /test/connection {
+      allow get: if true;
+    }
+
+    // Validation Blueprints
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'displayName', 'role', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'displayName', 'role', 'departmentId', 'programmeId', 'studentId', 'employeeId', 'inviteId', 'bindingId', 'status', 'createdAt', 'updatedAt'])
+        && isValidId(data.uid)
+        && isStr(data.displayName, 1, 160)
+        && data.role in ['super_admin', 'management', 'admissions', 'lecturer', 'hod', 'exam_officer', 'finance', 'hr', 'student', 'applicant']
+        && data.status in ['active', 'suspended']
+        && (!('departmentId' in data) || isOptStr(data.departmentId, 128))
+        && (!('programmeId' in data) || isOptStr(data.programmeId, 128))
+        && (!('studentId' in data) || isOptStr(data.studentId, 128))
+        && (!('employeeId' in data) || isOptStr(data.employeeId, 128))
+        && (!('inviteId' in data) || isOptStr(data.inviteId, 128))
+        && (!('bindingId' in data) || isOptStr(data.bindingId, 128))
+        && data.createdAt is string && data.createdAt.size() <= 64
+        && data.updatedAt is string && data.updatedAt.size() <= 64;
+    }
+
+    function isValidUserPrivatePII(data) {
+      return data.keys().hasAll(['uid', 'email', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'email', 'phone', 'nationalId', 'updatedAt'])
+        && isValidId(data.uid)
+        && isStr(data.email, 3, 200)
+        && (!('phone' in data) || isOptStr(data.phone, 32))
+        && (!('nationalId' in data) || isOptStr(data.nationalId, 32))
+        && isStr(data.updatedAt, 4, 64);
+    }
+
+    function isValidRoleInvite(data) {
+      return data.keys().hasAll(['email', 'role', 'assignedBy', 'createdAt'])
+        && data.keys().hasOnly(['email', 'role', 'departmentId', 'assignedBy', 'createdAt'])
+        && isStr(data.email, 3, 200)
+        && data.role in ['super_admin', 'management', 'admissions', 'lecturer', 'hod', 'exam_officer', 'finance', 'hr', 'student']
+        && (!('departmentId' in data) || isOptStr(data.departmentId, 128))
+        && isStr(data.assignedBy, 1, 128)
+        && isStr(data.createdAt, 4, 64);
+    }
+
+    function isValidFaculty(data) {
+      return data.keys().hasAll(['code', 'name', 'createdAt'])
+        && data.keys().hasOnly(['code', 'name', 'deanName', 'createdAt'])
+        && isStr(data.code, 2, 24)
+        && isStr(data.name, 2, 160)
+        && (!('deanName' in data) || isOptStr(data.deanName, 120))
+        && isStr(data.createdAt, 4, 64);
+    }
+
+    function isValidDepartment(data) {
+      return data.keys().hasAll(['code', 'name', 'facultyId', 'createdAt'])
+        && data.keys().hasOnly(['code', 'name', 'facultyId', 'hodName', 'createdAt'])
+        && isStr(data.code, 2, 24)
+        && isStr(data.name, 2, 160)
+        && isValidId(data.facultyId)
+        && (!('hodName' in data) || isOptStr(data.hodName, 120))
+        && isStr(data.createdAt, 4, 64);
+    }
+
+    function isValidProgramme(data) {
+      return data.keys().hasAll(['code', 'name', 'level', 'departmentId', 'durationYears', 'createdAt'])
+        && data.keys().hasOnly(['code', 'name', 'level', 'departmentId', 'durationYears', 'minKcseGrade', 'createdAt'])
+        && isStr(data.code, 2, 32)
+        && isStr(data.name, 2, 180)
+        && data.level in ['Degree', 'Diploma', 'Masters', 'PhD']
+        && isValidId(data.departmentId)
+        && data.durationYears is number && data.durationYears >= 1 && data.durationYears <= 7
+        && (!('minKcseGrade' in data) || isOptStr(data.minKcseGrade, 12))
+        && isStr(data.createdAt, 4, 64);
+    }
+
+    function isValidCourse(data) {
+      return data.keys().hasAll(['code', 'title', 'programmeId', 'departmentId', 'yearLevel', 'semesterNumber', 'creditUnits', 'createdAt'])
+        && data.keys().hasOnly(['code', 'title', 'programmeId', 'departmentId', 'yearLevel', 'semesterNumber', 'creditUnits', 'prerequisiteCode', 'lecturerUid', 'lecturerName', 'schedule', 'room', 'createdAt'])
+        && isStr(data.code, 2, 24)
+        && isStr(data.title, 2, 180)
+        && isValidId(data.programmeId)
+        && isValidId(data.departmentId)
+        && data.yearLevel is number && data.yearLevel >= 1 && data.yearLevel <= 6
+        && data.semesterNumber is number && data.semesterNumber >= 1 && data.semesterNumber <= 3
+        && data.creditUnits is number && data.creditUnits >= 1 && data.creditUnits <= 12
+        && (!('prerequisiteCode' in data) || isOptStr(data.prerequisiteCode, 24))
+        && (!('lecturerUid' in data) || isOptStr(data.lecturerUid, 128))
+        && (!('lecturerName' in data) || isOptStr(data.lecturerName, 120))
+        && (!('schedule' in data) || isOptStr(data.schedule, 160))
+        && (!('room' in data) || isOptStr(data.room, 64))
+        && isStr(data.createdAt, 4, 64);
+    }
+
+    function isValidAcademicCalendar(data) {
+      return data.keys().hasAll(['academicYear', 'semesterName', 'isActive', 'registrationOpen', 'marksEntryOpen', 'updatedAt'])
+        && data.keys().hasOnly(['academicYear', 'semesterName', 'isActive', 'registrationOpen', 'marksEntryOpen', 'startDate', 'endDate', 'updatedAt'])
+        && isStr(data.academicYear, 4, 32)
+        && isStr(data.semesterName, 2, 64)
+        && data.isActive is bool
+        && data.registrationOpen is bool
+        && data.marksEntryOpen is bool
+        && (!('startDate' in data) || isOptStr(data.startDate, 32))
+        && (!('endDate' in data) || isOptStr(data.endDate, 32))
+        && isStr(data.updatedAt, 4, 64);
+    }
+
+    function isValidStatutoryConfig(data) {
+      return data.keys().hasAll(['shifRate', 'housingLevyRate', 'nssfRate', 'personalRelief', 'updatedAt'])
+        && data.keys().hasOnly(['shifRate', 'housingLevyRate', 'nssfTier1Limit', 'nssfTier2Limit', 'nssfRate', 'personalRelief', 'payeBandsJson', 'gradingScaleJson', 'updatedBy', 'updatedAt'])
+        && data.shifRate is number && data.shifRate >= 0 && data.shifRate <= 20
+        && data.housingLevyRate is number && data.housingLevyRate >= 0 && data.housingLevyRate <= 20
+        && data.nssfRate is number && data.nssfRate >= 0 && data.nssfRate <= 20
+        && data.personalRelief is number && data.personalRelief >= 0
+        && (!('nssfTier1Limit' in data) || data.nssfTier1Limit is number)
+        && (!('nssfTier2Limit' in data) || data.nssfTier2Limit is number)
+        && (!('payeBandsJson' in data) || isOptStr(data.payeBandsJson, 2000))
+        && (!('gradingScaleJson' in data) || isOptStr(data.gradingScaleJson, 2000))
+        && (!('updatedBy' in data) || isOptStr(data.updatedBy, 128))
+        && isStr(data.updatedAt, 4, 64);
+    }
+
+    function isValidApplication(data) {
+      return data.keys().hasAll(['applicantUid', 'fullName', 'email', 'phone', 'nationalId', 'kcseMeanGrade', 'programmeId', 'entryCategory', 'appFeePaybillRef', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['applicantUid', 'fullName', 'email', 'phone', 'nationalId', 'kcseIndex', 'kcseMeanGrade', 'programmeId', 'programmeName', 'entryCategory', 'intake', 'appFeePaybillRef', 'status', 'generatedAdmissionNo', 'reviewNotes', 'reviewedBy', 'createdAt', 'updatedAt'])
+        && isValidId(data.applicantUid)
+        && isStr(data.fullName, 2, 160)
+        && isStr(data.email, 3, 200)
+        && isStr(data.phone, 5, 32)
+        && isStr(data.nationalId, 4, 32)
+        && isStr(data.kcseMeanGrade, 1, 8)
+        && isValidId(data.programmeId)
+        && data.entryCategory in ['KUCCPS', 'Self-Sponsored']
+        && isStr(data.appFeePaybillRef, 4, 32)
+        && data.status in ['submitted', 'under_review', 'admitted', 'rejected']
+        && (!('kcseIndex' in data) || isOptStr(data.kcseIndex, 32))
+        && (!('programmeName' in data) || isOptStr(data.programmeName, 180))
+        && (!('intake' in data) || isOptStr(data.intake, 64))
+        && (!('generatedAdmissionNo' in data) || isOptStr(data.generatedAdmissionNo, 64))
+        && (!('reviewNotes' in data) || isOptStr(data.reviewNotes, 500))
+        && (!('reviewedBy' in data) || isOptStr(data.reviewedBy, 128))
+        && isStr(data.createdAt, 4, 64)
+        && isStr(data.updatedAt, 4, 64);
+    }
+
+    function isValidStudent(data) {
+      return data.keys().hasAll(['admissionNo', 'fullName', 'programmeId', 'yearOfStudy', 'semester', 'category', 'academicStatus', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'admissionNo', 'fullName', 'email', 'phone', 'nationalId', 'programmeId', 'programmeName', 'departmentId', 'facultyId', 'yearOfStudy', 'semester', 'category', 'academicStatus', 'clearanceFinance', 'clearanceLibrary', 'clearanceDepartment', 'clearanceExams', 'createdAt', 'updatedAt'])
+        && isStr(data.admissionNo, 4, 64)
+        && isStr(data.fullName, 2, 160)
+        && isValidId(data.programmeId)
+        && data.yearOfStudy is number && data.yearOfStudy >= 1 && data.yearOfStudy <= 6
+        && data.semester is number && data.semester >= 1 && data.semester <= 3
+        && data.category in ['KUCCPS', 'Self-Sponsored']
+        && data.academicStatus in ['Active', 'Academic Leave', 'Deferred', 'Graduated', 'Discontinued']
+        && (!('uid' in data) || isOptStr(data.uid, 128))
+        && (!('email' in data) || isOptStr(data.email, 200))
+        && (!('phone' in data) || isOptStr(data.phone, 32))
+        && (!('nationalId' in data) || isOptStr(data.nationalId, 32))
+        && (!('programmeName' in data) || isOptStr(data.programmeName, 180))
+        && (!('departmentId' in data) || isOptStr(data.departmentId, 128))
+        && (!('facultyId' in data) || isOptStr(data.facultyId, 128))
+        && (!('clearanceFinance' in data) || data.clearanceFinance is bool)
+        && (!('clearanceLibrary' in data) || data.clearanceLibrary is bool)
+        && (!('clearanceDepartment' in data) || data.clearanceDepartment is bool)
+        && (!('clearanceExams' in data) || data.clearanceExams is bool)
+        && isStr(data.createdAt, 4, 64)
+        && isStr(data.updatedAt, 4, 64);
+    }
+
+    function isValidCourseRegistration(data) {
+      return data.keys().hasAll(['studentId', 'admissionNo', 'studentName', 'academicYear', 'semesterName', 'courseId', 'courseCode', 'courseTitle', 'creditUnits', 'status', 'createdAt'])
+        && data.keys().hasOnly(['studentId', 'studentUid', 'admissionNo', 'studentName', 'academicYear', 'semesterName', 'courseId', 'courseCode', 'courseTitle', 'creditUnits', 'status', 'createdAt'])
+        && isValidId(data.studentId)
+        && (!('studentUid' in data) || isOptStr(data.studentUid, 128))
+        && isStr(data.admissionNo, 2, 64)
+        && isStr(data.studentName, 2, 160)
+        && isStr(data.academicYear, 4, 32)
+        && isStr(data.semesterName, 2, 64)
+        && isValidId(data.courseId)
+        && isStr(data.courseCode, 2, 24)
+        && isStr(data.courseTitle, 2, 180)
+        && data.creditUnits is number && data.creditUnits >= 1 && data.creditUnits <= 12
+        && data.status in ['registered', 'dropped']
+        && isStr(data.createdAt, 4, 64);
+    }
+
+    function isValidAttendanceSession(data) {
+      return data.keys().hasAll(['courseId', 'courseCode', 'lecturerUid', 'sessionDate', 'topic', 'presentCount', 'totalEnrolled', 'createdAt'])
+        && data.keys().hasOnly(['courseId', 'courseCode', 'lecturerUid', 'sessionDate', 'topic', 'presentCount', 'totalEnrolled', 'presentStudentIds', 'createdAt'])
+        && isValidId(data.courseId)
+        && isStr(data.courseCode, 2, 24)
+        && isValidId(data.lecturerUid)
+        && isStr(data.sessionDate, 4, 32)
+        && isStr(data.topic, 2, 200)
+        && data.presentCount is number && data.presentCount >= 0
+        && data.totalEnrolled is number && data.totalEnrolled >= 0
+        && (!('presentStudentIds' in data) || (data.presentStudentIds is list && data.presentStudentIds.size() <= 500 && (data.presentStudentIds.size() == 0 || data.presentStudentIds[0] is string)))
+        && isStr(data.createdAt, 4, 64);
+    }
+
+    function isValidExamMark(data) {
+      return data.keys().hasAll(['studentId', 'admissionNo', 'studentName', 'courseId', 'courseCode', 'academicYear', 'semesterName', 'catScore', 'examScore', 'totalScore', 'grade', 'workflowStatus', 'updatedAt'])
+        && data.keys().hasOnly(['studentId', 'studentUid', 'admissionNo', 'studentName', 'courseId', 'courseCode', 'courseTitle', 'creditUnits', 'academicYear', 'semesterName', 'catScore', 'examScore', 'totalScore', 'grade', 'gradePoints', 'workflowStatus', 'updatedBy', 'updatedAt'])
+        && isValidId(data.studentId)
+        && (!('studentUid' in data) || isOptStr(data.studentUid, 128))
+        && isStr(data.admissionNo, 2, 64)
+        && isStr(data.studentName, 2, 160)
+        && isValidId(data.courseId)
+        && isStr(data.courseCode, 2, 24)
+        && (!('courseTitle' in data) || isOptStr(data.courseTitle, 180))
+        && (!('creditUnits' in data) || data.creditUnits is number)
+        && isStr(data.academicYear, 4, 32)
+        && isStr(data.semesterName, 2, 64)
+        && data.catScore is number && data.catScore >= 0 && data.catScore <= 30
+        && data.examScore is number && data.examScore >= 0 && data.examScore <= 70
+        && data.totalScore is number && data.totalScore >= 0 && data.totalScore <= 100
+        && isStr(data.grade, 1, 4)
+        && (!('gradePoints' in data) || data.gradePoints is number)
+        && data.workflowStatus in ['draft', 'submitted', 'moderated', 'approved', 'published']
+        && (!('updatedBy' in data) || isOptStr(data.updatedBy, 128))
+        && isStr(data.updatedAt, 4, 64);
+    }
+
+    function isValidFeeStructure(data) {
+      return data.keys().hasAll(['programmeId', 'programmeName', 'academicYear', 'semesterName', 'category', 'tuitionFee', 'totalFee', 'updatedAt'])
+        && data.keys().hasOnly(['programmeId', 'programmeName', 'academicYear', 'semesterName', 'category', 'tuitionFee', 'examFee', 'libraryMedicalFee', 'activityIctFee', 'totalFee', 'updatedAt'])
+        && isValidId(data.programmeId)
+        && isStr(data.programmeName, 2, 180)
+        && isStr(data.academicYear, 4, 32)
+        && isStr(data.semesterName, 2, 64)
+        && data.category in ['KUCCPS', 'Self-Sponsored']
+        && data.tuitionFee is number && data.tuitionFee >= 0
+        && (!('examFee' in data) || data.examFee is number)
+        && (!('libraryMedicalFee' in data) || data.libraryMedicalFee is number)
+        && (!('activityIctFee' in data) || data.activityIctFee is number)
+        && data.totalFee is number && data.totalFee >= 0
+        && isStr(data.updatedAt, 4, 64);
+    }
+
+    function isValidStudentAccount(data) {
+      return data.keys().hasAll(['studentId', 'admissionNo', 'studentName', 'totalBilled', 'totalPaid', 'scholarshipsTotal', 'balance', 'cleared', 'updatedAt'])
+        && data.keys().hasOnly(['studentId', 'studentUid', 'admissionNo', 'studentName', 'totalBilled', 'totalPaid', 'scholarshipsTotal', 'balance', 'cleared', 'updatedAt'])
+        && isValidId(data.studentId)
+        && (!('studentUid' in data) || isOptStr(data.studentUid, 128))
+        && isStr(data.admissionNo, 2, 64)
+        && isStr(data.studentName, 2, 160)
+        && data.totalBilled is number && data.totalBilled >= 0
+        && data.totalPaid is number && data.totalPaid >= 0
+        && data.scholarshipsTotal is number && data.scholarshipsTotal >= 0
+        && data.balance is number
+        && data.cleared is bool
+        && isStr(data.updatedAt, 4, 64);
+    }
+
+    function isValidPaymentSubmission(data) {
+      return data.keys().hasAll(['studentId', 'admissionNo', 'studentName', 'channel', 'referenceCode', 'amount', 'paymentDate', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['studentId', 'studentUid', 'admissionNo', 'studentName', 'channel', 'referenceCode', 'payerPhoneOrBank', 'amount', 'paymentDate', 'status', 'verifiedBy', 'rejectionReason', 'receiptNumber', 'createdAt', 'updatedAt'])
+        && isValidId(data.studentId)
+        && (!('studentUid' in data) || isOptStr(data.studentUid, 128))
+        && isStr(data.admissionNo, 2, 64)
+        && isStr(data.studentName, 2, 160)
+        && data.channel in ['M-PESA Paybill', 'Bank Deposit', 'EFT Transfer', 'HELB Disbursement']
+        && isStr(data.referenceCode, 4, 48)
+        && (!('payerPhoneOrBank' in data) || isOptStr(data.payerPhoneOrBank, 80))
+        && data.amount is number && data.amount > 0 && data.amount <= 5000000
+        && isStr(data.paymentDate, 4, 32)
+        && data.status in ['pending_verification', 'verified', 'rejected']
+        && (!('verifiedBy' in data) || isOptStr(data.verifiedBy, 128))
+        && (!('rejectionReason' in data) || isOptStr(data.rejectionReason, 300))
+        && (!('receiptNumber' in data) || isOptStr(data.receiptNumber, 64))
+        && isStr(data.createdAt, 4, 64)
+        && isStr(data.updatedAt, 4, 64);
+    }
+
+    function isValidReceipt(data) {
+      return data.keys().hasAll(['receiptNumber', 'paymentId', 'studentId', 'admissionNo', 'studentName', 'channel', 'referenceCode', 'amount', 'issuedBy', 'issuedAt'])
+        && data.keys().hasOnly(['receiptNumber', 'paymentId', 'studentId', 'studentUid', 'admissionNo', 'studentName', 'channel', 'referenceCode', 'amount', 'issuedBy', 'issuedAt'])
+        && isStr(data.receiptNumber, 4, 64)
+        && isValidId(data.paymentId)
+        && isValidId(data.studentId)
+        && (!('studentUid' in data) || isOptStr(data.studentUid, 128))
+        && isStr(data.admissionNo, 2, 64)
+        && isStr(data.studentName, 2, 160)
+        && isStr(data.channel, 2, 64)
+        && isStr(data.referenceCode, 4, 48)
+        && data.amount is number && data.amount > 0
+        && isStr(data.issuedBy, 1, 128)
+        && isStr(data.issuedAt, 4, 64);
+    }
+
+    function isValidScholarship(data) {
+      return data.keys().hasAll(['studentId', 'admissionNo', 'studentName', 'awardType', 'referenceNo', 'amount', 'academicYear', 'awardedBy', 'createdAt'])
+        && data.keys().hasOnly(['studentId', 'admissionNo', 'studentName', 'awardType', 'referenceNo', 'amount', 'academicYear', 'awardedBy', 'createdAt'])
+        && isValidId(data.studentId)
+        && isStr(data.admissionNo, 2, 64)
+        && isStr(data.studentName, 2, 160)
+        && data.awardType in ['HELB', 'County Bursary', 'Merit Scholarship', 'CDF Bursary']
+        && isStr(data.referenceNo, 3, 64)
+        && data.amount is number && data.amount > 0
+        && isStr(data.academicYear, 4, 32)
+        && isStr(data.awardedBy, 1, 128)
+        && isStr(data.createdAt, 4, 64);
+    }
+
+    function isValidEmployee(data) {
+      return data.keys().hasAll(['staffNo', 'fullName', 'email', 'departmentId', 'jobTitle', 'employmentCategory', 'basicSalary', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['staffNo', 'uid', 'fullName', 'email', 'departmentId', 'departmentName', 'jobTitle', 'employmentCategory', 'basicSalary', 'houseAllowance', 'commuterAllowance', 'pensionContribution', 'kraPin', 'bankName', 'bankAccountMasked', 'status', 'createdAt', 'updatedAt'])
+        && isStr(data.staffNo, 3, 48)
+        && (!('uid' in data) || isOptStr(data.uid, 128))
+        && isStr(data.fullName, 2, 160)
+        && isStr(data.email, 3, 200)
+        && isValidId(data.departmentId)
+        && (!('departmentName' in data) || isOptStr(data.departmentName, 160))
+        && isStr(data.jobTitle, 2, 120)
+        && data.employmentCategory in ['Permanent', 'Contract', 'Part-Time', 'Temporary']
+        && data.basicSalary is number && data.basicSalary >= 0
+        && (!('houseAllowance' in data) || data.houseAllowance is number)
+        && (!('commuterAllowance' in data) || data.commuterAllowance is number)
+        && (!('pensionContribution' in data) || data.pensionContribution is number)
+        && (!('kraPin' in data) || isOptStr(data.kraPin, 24))
+        && (!('bankName' in data) || isOptStr(data.bankName, 80))
+        && (!('bankAccountMasked' in data) || isOptStr(data.bankAccountMasked, 32))
+        && data.status in ['Active', 'On Leave', 'Terminated']
+        && isStr(data.createdAt, 4, 64)
+        && isStr(data.updatedAt, 4, 64);
+    }
+
+    function isValidLeaveRequest(data) {
+      return data.keys().hasAll(['employeeId', 'staffNo', 'employeeName', 'leaveType', 'startDate', 'endDate', 'days', 'reason', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['employeeId', 'employeeUid', 'staffNo', 'employeeName', 'leaveType', 'startDate', 'endDate', 'days', 'reason', 'status', 'reviewedBy', 'createdAt', 'updatedAt'])
+        && isValidId(data.employeeId)
+        && (!('employeeUid' in data) || isOptStr(data.employeeUid, 128))
+        && isStr(data.staffNo, 2, 48)
+        && isStr(data.employeeName, 2, 160)
+        && data.leaveType in ['Annual', 'Sick', 'Maternity/Paternity', 'Study', 'Compassionate']
+        && isStr(data.startDate, 4, 32)
+        && isStr(data.endDate, 4, 32)
+        && data.days is number && data.days >= 1 && data.days <= 365
+        && isStr(data.reason, 3, 400)
+        && data.status in ['pending', 'approved', 'rejected']
+        && (!('reviewedBy' in data) || isOptStr(data.reviewedBy, 128))
+        && isStr(data.createdAt, 4, 64)
+        && isStr(data.updatedAt, 4, 64);
+    }
+
+    function isValidPayrollRun(data) {
+      return data.keys().hasAll(['monthLabel', 'employeeCount', 'totalGross', 'totalPaye', 'totalNssf', 'totalShif', 'totalHousingLevy', 'totalNetPay', 'status', 'preparedBy', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['monthLabel', 'employeeCount', 'totalGross', 'totalPaye', 'totalNssf', 'totalShif', 'totalHousingLevy', 'totalNetPay', 'status', 'preparedBy', 'approvedBy', 'createdAt', 'updatedAt'])
+        && isStr(data.monthLabel, 3, 40)
+        && data.employeeCount is number && data.employeeCount >= 0
+        && data.totalGross is number && data.totalGross >= 0
+        && data.totalPaye is number && data.totalPaye >= 0
+        && data.totalNssf is number && data.totalNssf >= 0
+        && data.totalShif is number && data.totalShif >= 0
+        && data.totalHousingLevy is number && data.totalHousingLevy >= 0
+        && data.totalNetPay is number && data.totalNetPay >= 0
+        && data.status in ['draft', 'approved', 'paid']
+        && isStr(data.preparedBy, 1, 128)
+        && (!('approvedBy' in data) || isOptStr(data.approvedBy, 128))
+        && isStr(data.createdAt, 4, 64)
+        && isStr(data.updatedAt, 4, 64);
+    }
+
+    function isValidPayslip(data) {
+      return data.keys().hasAll(['runId', 'monthLabel', 'employeeId', 'staffNo', 'employeeName', 'basicSalary', 'grossPay', 'nssf', 'shif', 'housingLevy', 'paye', 'netPay', 'createdAt'])
+        && data.keys().hasOnly(['runId', 'monthLabel', 'employeeId', 'employeeUid', 'staffNo', 'employeeName', 'jobTitle', 'basicSalary', 'allowances', 'grossPay', 'nssf', 'shif', 'housingLevy', 'pension', 'taxablePay', 'paye', 'netPay', 'bankName', 'bankAccountMasked', 'createdAt'])
+        && isValidId(data.runId)
+        && isStr(data.monthLabel, 3, 40)
+        && isValidId(data.employeeId)
+        && (!('employeeUid' in data) || isOptStr(data.employeeUid, 128))
+        && isStr(data.staffNo, 2, 48)
+        && isStr(data.employeeName, 2, 160)
+        && (!('jobTitle' in data) || isOptStr(data.jobTitle, 120))
+        && data.basicSalary is number && data.basicSalary >= 0
+        && (!('allowances' in data) || data.allowances is number)
+        && data.grossPay is number && data.grossPay >= 0
+        && data.nssf is number && data.nssf >= 0
+        && data.shif is number && data.shif >= 0
+        && data.housingLevy is number && data.housingLevy >= 0
+        && (!('pension' in data) || data.pension is number)
+        && (!('taxablePay' in data) || data.taxablePay is number)
+        && data.paye is number && data.paye >= 0
+        && data.netPay is number && data.netPay >= 0
+        && (!('bankName' in data) || isOptStr(data.bankName, 80))
+        && (!('bankAccountMasked' in data) || isOptStr(data.bankAccountMasked, 32))
+        && isStr(data.createdAt, 4, 64);
+    }
+
+    function isValidNotice(data) {
+      return data.keys().hasAll(['title', 'body', 'audience', 'authorName', 'createdAt'])
+        && data.keys().hasOnly(['title', 'body', 'category', 'audience', 'pinned', 'eventDate', 'ctaLabel', 'authorName', 'createdAt'])
+        && isStr(data.title, 3, 200)
+        && isStr(data.body, 5, 2000)
+        && (!('category' in data) || data.category in ['Admission Intake', 'Academic Circular', 'Campus Event', 'Fee & Finance', 'Scholarship / Advert'])
+        && data.audience in ['All', 'Students', 'Staff']
+        && (!('pinned' in data) || data.pinned is bool)
+        && (!('eventDate' in data) || isOptStr(data.eventDate, 32))
+        && (!('ctaLabel' in data) || isOptStr(data.ctaLabel, 64))
+        && isStr(data.authorName, 2, 120)
+        && isStr(data.createdAt, 4, 64);
+    }
+
+    function isValidPortalBinding(data) {
+      return data.keys().hasAll(['code', 'targetType', 'targetId', 'role', 'fullName', 'verificationHash', 'createdAt'])
+        && data.keys().hasOnly(['code', 'targetType', 'targetId', 'role', 'fullName', 'verificationHash', 'boundUid', 'createdAt'])
+        && isStr(data.code, 3, 64)
+        && data.targetType in ['student', 'employee']
+        && isValidId(data.targetId)
+        && data.role in ['student', 'lecturer', 'hod', 'exam_officer', 'finance', 'hr', 'admissions', 'management']
+        && isStr(data.fullName, 2, 160)
+        && isStr(data.verificationHash, 8, 128)
+        && (!('boundUid' in data) || isOptStr(data.boundUid, 128))
+        && isStr(data.createdAt, 4, 64);
+    }
+
+    function isValidSupportTicket(data) {
+      return data.keys().hasAll(['requesterUid', 'requesterName', 'category', 'subject', 'description', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['requesterUid', 'requesterName', 'category', 'subject', 'description', 'status', 'resolutionNote', 'assignedTo', 'createdAt', 'updatedAt'])
+        && isValidId(data.requesterUid)
+        && isStr(data.requesterName, 2, 160)
+        && data.category in ['Academic', 'Finance', 'Admissions', 'ICT', 'Welfare']
+        && isStr(data.subject, 3, 200)
+        && isStr(data.description, 5, 2000)
+        && data.status in ['open', 'in_progress', 'resolved']
+        && (!('resolutionNote' in data) || isOptStr(data.resolutionNote, 1000))
+        && (!('assignedTo' in data) || isOptStr(data.assignedTo, 120))
+        && isStr(data.createdAt, 4, 64)
+        && isStr(data.updatedAt, 4, 64);
+    }
+
+    function isValidAuditLog(data) {
+      return data.keys().hasAll(['actorUid', 'actorName', 'actorRole', 'action', 'entityPath', 'details', 'createdAt'])
+        && data.keys().hasOnly(['actorUid', 'actorName', 'actorRole', 'action', 'entityPath', 'details', 'createdAt'])
+        && isValidId(data.actorUid)
+        && isStr(data.actorName, 1, 160)
+        && isStr(data.actorRole, 1, 40)
+        && isStr(data.action, 2, 120)
+        && isStr(data.entityPath, 2, 240)
+        && isStr(data.details, 2, 1000)
+        && isStr(data.createdAt, 4, 64);
+    }
+
+    function isValidCourseResource(data) {
+      return data.keys().hasAll(['courseId', 'courseCode', 'courseTitle', 'title', 'resourceType', 'uploadedByUid', 'uploadedByName', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['courseId', 'courseCode', 'courseTitle', 'title', 'resourceType', 'authorOrEdition', 'summary', 'contentBody', 'resourceUrl', 'fileName', 'fileDataUrl', 'uploadedByUid', 'uploadedByName', 'createdAt', 'updatedAt'])
+        && isValidId(data.courseId)
+        && isStr(data.courseCode, 2, 24)
+        && isStr(data.courseTitle, 2, 180)
+        && isStr(data.title, 2, 200)
+        && data.resourceType in ['Textbook / E-Book', 'Lecture Notes', 'Past Paper', 'Lab Manual', 'Video Lecture']
+        && (!('authorOrEdition' in data) || isOptStr(data.authorOrEdition, 120))
+        && (!('summary' in data) || isOptStr(data.summary, 1200))
+        && (!('contentBody' in data) || isOptStr(data.contentBody, 8000))
+        && (!('resourceUrl' in data) || isOptStr(data.resourceUrl, 500))
+        && (!('fileName' in data) || isOptStr(data.fileName, 180))
+        && (!('fileDataUrl' in data) || isOptStr(data.fileDataUrl, 360000))
+        && isValidId(data.uploadedByUid)
+        && isStr(data.uploadedByName, 2, 160)
+        && isStr(data.createdAt, 4, 64)
+        && isStr(data.updatedAt, 4, 64);
+    }
+
+    function isValidOnlineClass(data) {
+      return data.keys().hasAll(['courseId', 'courseCode', 'courseTitle', 'title', 'platform', 'scheduledStart', 'durationMinutes', 'status', 'lecturerUid', 'lecturerName', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['courseId', 'courseCode', 'courseTitle', 'title', 'topicSummary', 'platform', 'meetingUrl', 'passcode', 'scheduledStart', 'durationMinutes', 'status', 'lecturerUid', 'lecturerName', 'createdAt', 'updatedAt'])
+        && isValidId(data.courseId)
+        && isStr(data.courseCode, 2, 24)
+        && isStr(data.courseTitle, 2, 180)
+        && isStr(data.title, 2, 200)
+        && (!('topicSummary' in data) || isOptStr(data.topicSummary, 1000))
+        && data.platform in ['PUST Virtual Room', 'Google Meet', 'Zoom', 'Microsoft Teams']
+        && (!('meetingUrl' in data) || isOptStr(data.meetingUrl, 500))
+        && (!('passcode' in data) || isOptStr(data.passcode, 64))
+        && isStr(data.scheduledStart, 4, 64)
+        && data.durationMinutes is number && data.durationMinutes >= 10 && data.durationMinutes <= 480
+        && data.status in ['scheduled', 'live', 'completed']
+        && isValidId(data.lecturerUid)
+        && isStr(data.lecturerName, 2, 160)
+        && isStr(data.createdAt, 4, 64)
+        && isStr(data.updatedAt, 4, 64);
+    }
+
+    function isValidClassMessage(data) {
+      return data.keys().hasAll(['classId', 'senderUid', 'senderName', 'senderRole', 'kind', 'body', 'createdAt'])
+        && data.keys().hasOnly(['classId', 'senderUid', 'senderName', 'senderRole', 'kind', 'body', 'createdAt'])
+        && isValidId(data.classId)
+        && isValidId(data.senderUid)
+        && isStr(data.senderName, 1, 160)
+        && data.senderRole in ['lecturer', 'student']
+        && data.kind in ['chat', 'checkin']
+        && isStr(data.body, 1, 1000)
+        && isStr(data.createdAt, 4, 64);
+    }
+
+    function isValidOnlineAssessment(data) {
+      return data.keys().hasAll(['courseId', 'courseCode', 'courseTitle', 'assessmentType', 'title', 'durationMinutes', 'dueDate', 'totalMarks', 'status', 'questions', 'createdByUid', 'createdByName', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['courseId', 'courseCode', 'courseTitle', 'assessmentType', 'title', 'instructions', 'durationMinutes', 'dueDate', 'totalMarks', 'status', 'questions', 'createdByUid', 'createdByName', 'createdAt', 'updatedAt'])
+        && isValidId(data.courseId)
+        && isStr(data.courseCode, 2, 24)
+        && isStr(data.courseTitle, 2, 180)
+        && data.assessmentType in ['Online CAT', 'Online Exam']
+        && isStr(data.title, 2, 200)
+        && (!('instructions' in data) || isOptStr(data.instructions, 1500))
+        && data.durationMinutes is number && data.durationMinutes >= 5 && data.durationMinutes <= 360
+        && isStr(data.dueDate, 4, 64)
+        && data.totalMarks is number && data.totalMarks >= 1 && data.totalMarks <= 100
+        && data.status in ['draft', 'published', 'closed']
+        && data.questions is list && data.questions.size() >= 1 && data.questions.size() <= 40 && data.questions[0] is map
+        && isValidId(data.createdByUid)
+        && isStr(data.createdByName, 2, 160)
+        && isStr(data.createdAt, 4, 64)
+        && isStr(data.updatedAt, 4, 64);
+    }
+
+    function isValidAssessmentSubmission(data) {
+      return data.keys().hasAll(['assessmentId', 'assessmentTitle', 'assessmentType', 'courseId', 'courseCode', 'studentId', 'studentUid', 'admissionNo', 'studentName', 'answers', 'autoScore', 'totalScore', 'maxMarks', 'status', 'submittedAt', 'updatedAt'])
+        && data.keys().hasOnly(['assessmentId', 'assessmentTitle', 'assessmentType', 'courseId', 'courseCode', 'studentId', 'studentUid', 'admissionNo', 'studentName', 'answers', 'autoScore', 'totalScore', 'maxMarks', 'status', 'feedback', 'gradedBy', 'submittedAt', 'updatedAt'])
+        && isValidId(data.assessmentId)
+        && isStr(data.assessmentTitle, 2, 200)
+        && data.assessmentType in ['Online CAT', 'Online Exam']
+        && isValidId(data.courseId)
+        && isStr(data.courseCode, 2, 24)
+        && isValidId(data.studentId)
+        && isValidId(data.studentUid)
+        && isStr(data.admissionNo, 2, 64)
+        && isStr(data.studentName, 2, 160)
+        && data.answers is list && data.answers.size() <= 40 && (data.answers.size() == 0 || data.answers[0] is map)
+        && data.autoScore is number && data.autoScore >= 0
+        && data.totalScore is number && data.totalScore >= 0
+        && data.maxMarks is number && data.maxMarks >= 1
+        && data.status in ['submitted', 'graded']
+        && (!('feedback' in data) || isOptStr(data.feedback, 1000))
+        && (!('gradedBy' in data) || isOptStr(data.gradedBy, 128))
+        && isStr(data.submittedAt, 4, 64)
+        && isStr(data.updatedAt, 4, 64);
+    }
+
+    function isValidCourseAssignment(data) {
+      return data.keys().hasAll(['courseId', 'courseCode', 'courseTitle', 'title', 'instructions', 'dueDate', 'maxMarks', 'status', 'createdByUid', 'createdByName', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['courseId', 'courseCode', 'courseTitle', 'title', 'instructions', 'dueDate', 'maxMarks', 'status', 'resourceUrl', 'fileName', 'fileDataUrl', 'createdByUid', 'createdByName', 'createdAt', 'updatedAt'])
+        && isValidId(data.courseId)
+        && isStr(data.courseCode, 2, 24)
+        && isStr(data.courseTitle, 2, 180)
+        && isStr(data.title, 2, 200)
+        && isStr(data.instructions, 3, 2500)
+        && isStr(data.dueDate, 4, 64)
+        && data.maxMarks is number && data.maxMarks >= 1 && data.maxMarks <= 100
+        && data.status in ['open', 'closed']
+        && (!('resourceUrl' in data) || isOptStr(data.resourceUrl, 500))
+        && (!('fileName' in data) || isOptStr(data.fileName, 180))
+        && (!('fileDataUrl' in data) || isOptStr(data.fileDataUrl, 360000))
+        && isValidId(data.createdByUid)
+        && isStr(data.createdByName, 2, 160)
+        && isStr(data.createdAt, 4, 64)
+        && isStr(data.updatedAt, 4, 64);
+    }
+
+    function isValidAssignmentSubmission(data) {
+      return data.keys().hasAll(['assignmentId', 'assignmentTitle', 'courseId', 'courseCode', 'studentId', 'studentUid', 'admissionNo', 'studentName', 'submissionText', 'status', 'submittedAt', 'updatedAt'])
+        && data.keys().hasOnly(['assignmentId', 'assignmentTitle', 'courseId', 'courseCode', 'studentId', 'studentUid', 'admissionNo', 'studentName', 'submissionText', 'submissionUrl', 'fileName', 'fileDataUrl', 'score', 'maxMarks', 'status', 'feedback', 'gradedBy', 'submittedAt', 'updatedAt'])
+        && isValidId(data.assignmentId)
+        && isStr(data.assignmentTitle, 2, 200)
+        && isValidId(data.courseId)
+        && isStr(data.courseCode, 2, 24)
+        && isValidId(data.studentId)
+        && isValidId(data.studentUid)
+        && isStr(data.admissionNo, 2, 64)
+        && isStr(data.studentName, 2, 160)
+        && isStr(data.submissionText, 2, 4000)
+        && (!('submissionUrl' in data) || isOptStr(data.submissionUrl, 500))
+        && (!('fileName' in data) || isOptStr(data.fileName, 180))
+        && (!('fileDataUrl' in data) || isOptStr(data.fileDataUrl, 360000))
+        && (!('score' in data) || (data.score is number && data.score >= 0))
+        && (!('maxMarks' in data) || (data.maxMarks is number && data.maxMarks >= 1))
+        && data.status in ['submitted', 'graded']
+        && (!('feedback' in data) || isOptStr(data.feedback, 1000))
+        && (!('gradedBy' in data) || isOptStr(data.gradedBy, 128))
+        && isStr(data.submittedAt, 4, 64)
+        && isStr(data.updatedAt, 4, 64);
+    }
+
+    function isValidStudentNotification(data) {
+      return data.keys().hasAll(['targetScope', 'courseId', 'courseCode', 'category', 'title', 'message', 'sourceCollection', 'sourceId', 'isRead', 'createdByUid', 'createdByName', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['targetScope', 'targetStudentId', 'targetStudentUid', 'courseId', 'courseCode', 'courseTitle', 'category', 'title', 'message', 'sourceCollection', 'sourceId', 'isRead', 'createdByUid', 'createdByName', 'createdAt', 'updatedAt'])
+        && data.targetScope in ['course', 'student']
+        && (!('targetStudentId' in data) || isOptStr(data.targetStudentId, 128))
+        && (!('targetStudentUid' in data) || isOptStr(data.targetStudentUid, 128))
+        && isValidId(data.courseId)
+        && isStr(data.courseCode, 2, 24)
+        && (!('courseTitle' in data) || isOptStr(data.courseTitle, 180))
+        && data.category in ['grade', 'assignment', 'assessment']
+        && isStr(data.title, 2, 200)
+        && isStr(data.message, 2, 600)
+        && data.sourceCollection in ['course_assignments', 'assignment_submissions', 'online_assessments', 'assessment_submissions']
+        && isValidId(data.sourceId)
+        && data.isRead is bool
+        && isValidId(data.createdByUid)
+        && isStr(data.createdByName, 2, 160)
+        && isStr(data.createdAt, 4, 64)
+        && isStr(data.updatedAt, 4, 64);
+    }
+
+    function isValidNotificationRead(data) {
+      return data.keys().hasAll(['uid', 'notifId', 'readAt'])
+        && data.keys().hasOnly(['uid', 'notifId', 'readAt'])
+        && isValidId(data.uid)
+        && isValidId(data.notifId)
+        && isStr(data.readAt, 4, 64);
+    }
+
+    function isValidStudyGroup(data) {
+      return data.keys().hasAll(['courseId', 'courseCode', 'courseTitle', 'name', 'topic', 'status', 'maxMembers', 'memberCount', 'creatorUid', 'creatorName', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['courseId', 'courseCode', 'courseTitle', 'name', 'topic', 'scheduleNote', 'meetingUrl', 'sharedNotes', 'sharedNotesUpdatedBy', 'status', 'maxMembers', 'memberCount', 'creatorUid', 'creatorName', 'creatorAdmissionNo', 'createdAt', 'updatedAt'])
+        && isValidId(data.courseId)
+        && isStr(data.courseCode, 2, 24)
+        && isStr(data.courseTitle, 2, 180)
+        && isStr(data.name, 2, 160)
+        && isStr(data.topic, 2, 500)
+        && (!('scheduleNote' in data) || isOptStr(data.scheduleNote, 160))
+        && (!('meetingUrl' in data) || isOptStr(data.meetingUrl, 500))
+        && (!('sharedNotes' in data) || isOptStr(data.sharedNotes, 8000))
+        && (!('sharedNotesUpdatedBy' in data) || isOptStr(data.sharedNotesUpdatedBy, 160))
+        && data.status in ['active', 'archived']
+        && data.maxMembers is number && data.maxMembers >= 2 && data.maxMembers <= 50
+        && data.memberCount is number && data.memberCount >= 0 && data.memberCount <= data.maxMembers
+        && isValidId(data.creatorUid)
+        && isStr(data.creatorName, 2, 160)
+        && (!('creatorAdmissionNo' in data) || isOptStr(data.creatorAdmissionNo, 64))
+        && isStr(data.createdAt, 4, 64)
+        && isStr(data.updatedAt, 4, 64);
+    }
+
+    function isValidStudyGroupMember(data) {
+      return data.keys().hasAll(['groupId', 'uid', 'displayName', 'role', 'joinedAt'])
+        && data.keys().hasOnly(['groupId', 'uid', 'studentId', 'admissionNo', 'displayName', 'role', 'joinedAt'])
+        && isValidId(data.groupId)
+        && isValidId(data.uid)
+        && (!('studentId' in data) || isOptStr(data.studentId, 128))
+        && (!('admissionNo' in data) || isOptStr(data.admissionNo, 64))
+        && isStr(data.displayName, 1, 160)
+        && data.role in ['host', 'member']
+        && isStr(data.joinedAt, 4, 64);
+    }
+
+    function isValidStudyGroupMessage(data) {
+      return data.keys().hasAll(['groupId', 'senderUid', 'senderName', 'kind', 'body', 'createdAt'])
+        && data.keys().hasOnly(['groupId', 'senderUid', 'senderName', 'senderAdmissionNo', 'kind', 'body', 'createdAt'])
+        && isValidId(data.groupId)
+        && isValidId(data.senderUid)
+        && isStr(data.senderName, 1, 160)
+        && (!('senderAdmissionNo' in data) || isOptStr(data.senderAdmissionNo, 64))
+        && data.kind in ['chat', 'resource_share', 'system']
+        && isStr(data.body, 1, 1500)
+        && isStr(data.createdAt, 4, 64);
+    }
+
+    function isValidStudyGroupMembershipIndex(data) {
+      return data.keys().hasAll(['uid', 'groupId', 'role', 'joinedAt'])
+        && data.keys().hasOnly(['uid', 'groupId', 'role', 'joinedAt'])
+        && isValidId(data.uid)
+        && isValidId(data.groupId)
+        && data.role in ['host', 'member']
+        && isStr(data.joinedAt, 4, 64);
+    }
+
+    // =========================================================================
+    // COLLECTION RULES
+    // =========================================================================
+
+    match /users/{uid} {
+      allow get: if isValidId(uid) && isVerifiedUser() && (request.auth.uid == uid || isAdmin() || isManagement());
+      allow list: if isAdmin() || isManagement();
+      allow create: if isValidId(uid) && isVerifiedUser() && isValidUserProfile(incoming()) && incoming().uid == uid && (
+        isAdmin() ||
+        (isBootstrappedAdmin() && incoming().role == 'super_admin') ||
+        (request.auth.uid == uid && incoming().role in ['applicant', 'student']) ||
+        (
+          request.auth.uid == uid &&
+          isEmailVerified() &&
+          'inviteId' in incoming() &&
+          isValidId(incoming().inviteId) &&
+          exists(/databases/$(database)/documents/role_invites/$(incoming().inviteId)) &&
+          get(/databases/$(database)/documents/role_invites/$(incoming().inviteId)).data.email == request.auth.token.email &&
+          get(/databases/$(database)/documents/role_invites/$(incoming().inviteId)).data.role == incoming().role
+        ) ||
+        (
+          request.auth.uid == uid &&
+          'bindingId' in incoming() &&
+          isValidId(incoming().bindingId) &&
+          exists(/databases/$(database)/documents/portal_bindings/$(incoming().bindingId)) &&
+          get(/databases/$(database)/documents/portal_bindings/$(incoming().bindingId)).data.boundUid == request.auth.uid &&
+          get(/databases/$(database)/documents/portal_bindings/$(incoming().bindingId)).data.role == incoming().role
+        )
+      );
+      allow update: if isValidId(uid) && isVerifiedUser() && isValidUserProfile(incoming())
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && (
+          isAdmin() ||
+          (request.auth.uid == uid && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'updatedAt'])) ||
+          (
+            request.auth.uid == uid &&
+            existing().role in ['applicant', 'student'] &&
+            'bindingId' in incoming() &&
+            isValidId(incoming().bindingId) &&
+            exists(/databases/$(database)/documents/portal_bindings/$(incoming().bindingId)) &&
+            get(/databases/$(database)/documents/portal_bindings/$(incoming().bindingId)).data.boundUid == request.auth.uid &&
+            get(/databases/$(database)/documents/portal_bindings/$(incoming().bindingId)).data.role == incoming().role &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['role', 'studentId', 'employeeId', 'bindingId', 'updatedAt'])
+          )
+        );
+      allow delete: if isValidId(uid) && isAdmin();
+
+      match /private/{docId} {
+        allow get: if isValidId(uid) && isValidId(docId) && isVerifiedUser() && (request.auth.uid == uid || isAdmin());
+        allow list: if isValidId(uid) && isVerifiedUser() && (request.auth.uid == uid || isAdmin());
+        allow create: if isValidId(uid) && isValidId(docId) && isVerifiedUser() && isValidUserPrivatePII(incoming()) && incoming().uid == uid && (request.auth.uid == uid || isAdmin());
+        allow update: if isValidId(uid) && isValidId(docId) && isVerifiedUser() && isValidUserPrivatePII(incoming()) && incoming().uid == existing().uid && (request.auth.uid == uid || isAdmin());
+        allow delete: if isValidId(uid) && isValidId(docId) && isAdmin();
+      }
+
+      match /notification_reads/{notifId} {
+        allow get: if isValidId(uid) && isValidId(notifId) && isVerifiedUser() && (request.auth.uid == uid || isAdmin());
+        allow list: if isValidId(uid) && isVerifiedUser() && (request.auth.uid == uid || isAdmin());
+        allow create, update: if isValidId(uid) && isValidId(notifId) && isVerifiedUser()
+          && isValidNotificationRead(incoming())
+          && incoming().uid == uid
+          && incoming().notifId == notifId
+          && (request.auth.uid == uid || isAdmin())
+          && exists(/databases/$(database)/documents/student_notifications/$(notifId));
+        allow delete: if isValidId(uid) && isValidId(notifId) && (request.auth.uid == uid || isAdmin());
+      }
+
+      match /study_group_memberships/{groupId} {
+        allow get: if isValidId(uid) && isValidId(groupId) && isVerifiedUser() && (request.auth.uid == uid || isAdmin());
+        allow list: if isValidId(uid) && isVerifiedUser() && (request.auth.uid == uid || isAdmin());
+        allow create, update: if isValidId(uid) && isValidId(groupId) && isVerifiedUser()
+          && isValidStudyGroupMembershipIndex(incoming())
+          && incoming().uid == uid
+          && incoming().groupId == groupId
+          && (request.auth.uid == uid || isAdmin())
+          && existsAfter(/databases/$(database)/documents/study_groups/$(groupId)/members/$(uid));
+        allow delete: if isValidId(uid) && isValidId(groupId) && isVerifiedUser() && (request.auth.uid == uid || isAdmin());
+      }
+    }
+
+    match /role_invites/{emailKey} {
+      allow get: if isValidId(emailKey) && isVerifiedUser() && (isAdmin() || resource.data.email == request.auth.token.email);
+      allow list: if isVerifiedUser() && (isAdmin() || resource.data.email == request.auth.token.email);
+      allow create, update: if isValidId(emailKey) && isAdmin() && isValidRoleInvite(incoming());
+      allow delete: if isValidId(emailKey) && isAdmin();
+    }
+
+    // Public Institutional Catalogs (readable for public admissions/fee preview)
+    match /faculties/{facultyId} {
+      allow get: if isValidId(facultyId);
+      allow list: if true;
+      allow create, update: if isValidId(facultyId) && isAdmin() && isValidFaculty(incoming());
+      allow delete: if isValidId(facultyId) && isAdmin();
+    }
+
+    match /departments/{deptId} {
+      allow get: if isValidId(deptId);
+      allow list: if true;
+      allow create, update: if isValidId(deptId) && isAdmin() && isValidDepartment(incoming()) && exists(/databases/$(database)/documents/faculties/$(incoming().facultyId));
+      allow delete: if isValidId(deptId) && isAdmin();
+    }
+
+    match /programmes/{progId} {
+      allow get: if isValidId(progId);
+      allow list: if true;
+      allow create, update: if isValidId(progId) && isAdmin() && isValidProgramme(incoming()) && exists(/databases/$(database)/documents/departments/$(incoming().departmentId));
+      allow delete: if isValidId(progId) && isAdmin();
+    }
+
+    match /courses/{courseId} {
+      allow get: if isValidId(courseId);
+      allow list: if true;
+      allow create, update: if isValidId(courseId) && (isAdmin() || isAcademicStaff()) && isValidCourse(incoming());
+      allow delete: if isValidId(courseId) && isAdmin();
+    }
+
+    match /academic_calendars/{calendarId} {
+      allow get: if isValidId(calendarId);
+      allow list: if true;
+      allow create, update: if isValidId(calendarId) && isAdmin() && isValidAcademicCalendar(incoming());
+      allow delete: if isValidId(calendarId) && isAdmin();
+    }
+
+    match /statutory_configs/{configId} {
+      allow get: if isValidId(configId) && isVerifiedUser();
+      allow list: if isVerifiedUser();
+      allow create, update: if isValidId(configId) && (isAdmin() || isHR()) && isValidStatutoryConfig(incoming());
+      allow delete: if isValidId(configId) && isAdmin();
+    }
+
+    // Admissions
+    match /applications/{appId} {
+      allow get: if isValidId(appId) && isVerifiedUser() && (resource.data.applicantUid == request.auth.uid || isAdmissions());
+      allow list: if isVerifiedUser() && (resource.data.applicantUid == request.auth.uid || isAdmissions());
+      allow create: if isValidId(appId) && isVerifiedUser() && isValidApplication(incoming())
+        && exists(/databases/$(database)/documents/programmes/$(incoming().programmeId))
+        && (
+          isAdmin() ||
+          (
+            incoming().applicantUid == request.auth.uid &&
+            incoming().status == 'submitted' &&
+            (!('generatedAdmissionNo' in incoming()) || incoming().generatedAdmissionNo == '') &&
+            (!('reviewedBy' in incoming()) || incoming().reviewedBy == '')
+          )
+        );
+      allow update: if isValidId(appId) && isVerifiedUser() && isValidApplication(incoming())
+        && incoming().applicantUid == existing().applicantUid
+        && incoming().createdAt == existing().createdAt
+        && isAdmissions()
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'generatedAdmissionNo', 'reviewNotes', 'reviewedBy', 'updatedAt']);
+      allow delete: if isValidId(appId) && isAdmin();
+    }
+
+    // Students
+    match /students/{studentId} {
+      allow get: if isValidId(studentId) && isVerifiedUser() && (resource.data.uid == request.auth.uid || isAdmissions() || isAcademicStaff() || isFinance() || (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == studentId));
+      allow list: if isVerifiedUser() && (resource.data.uid == request.auth.uid || isAdmissions() || isAcademicStaff() || isFinance());
+      allow create: if isValidId(studentId) && (isAdmin() || isAdmissions()) && isValidStudent(incoming());
+      allow update: if isValidId(studentId) && isVerifiedUser() && isValidStudent(incoming())
+        && incoming().createdAt == existing().createdAt
+        && (
+          isAdmin() ||
+          isAdmissions() ||
+          (isFinance() && incoming().diff(existing()).affectedKeys().hasOnly(['clearanceFinance', 'updatedAt'])) ||
+          (isAcademicStaff() && incoming().diff(existing()).affectedKeys().hasOnly(['clearanceDepartment', 'clearanceExams', 'updatedAt'])) ||
+          (
+            (!('uid' in existing()) || existing().uid == '') &&
+            incoming().uid == request.auth.uid &&
+            hasUserDoc() &&
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == studentId &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['uid', 'updatedAt'])
+          )
+        );
+      allow delete: if isValidId(studentId) && isAdmin();
+    }
+
+    // Course Registrations
+    match /course_registrations/{regId} {
+      allow get: if isValidId(regId) && isVerifiedUser() && (resource.data.studentUid == request.auth.uid || isAcademicStaff() || isAdmissions() || isFinance() || (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.studentId));
+      allow list: if isVerifiedUser() && (resource.data.studentUid == request.auth.uid || isAcademicStaff() || isAdmissions() || isFinance() || (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.studentId));
+      allow create: if isValidId(regId) && isVerifiedUser() && isValidCourseRegistration(incoming())
+        && (isAdmin() || isAcademicStaff() || incoming().studentUid == request.auth.uid)
+        && exists(/databases/$(database)/documents/students/$(incoming().studentId))
+        && exists(/databases/$(database)/documents/courses/$(incoming().courseId));
+      allow update: if isValidId(regId) && isVerifiedUser() && isValidCourseRegistration(incoming())
+        && (isAdmin() || isAcademicStaff() || (existing().studentUid == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['status'])));
+      allow delete: if isValidId(regId) && isAdmin();
+    }
+
+    // Attendance
+    match /attendance_sessions/{sessionId} {
+      allow get: if isValidId(sessionId) && isVerifiedUser() && isAcademicStaff();
+      allow list: if isVerifiedUser() && isAcademicStaff();
+      allow create: if isValidId(sessionId) && isAcademicStaff() && isValidAttendanceSession(incoming())
+        && (isAdmin() || incoming().lecturerUid == request.auth.uid)
+        && exists(/databases/$(database)/documents/courses/$(incoming().courseId));
+      allow update: if isValidId(sessionId) && isAcademicStaff() && isValidAttendanceSession(incoming())
+        && (isAdmin() || existing().lecturerUid == request.auth.uid);
+      allow delete: if isValidId(sessionId) && isAdmin();
+    }
+
+    // Exam Marks (Multi-stage lock: Lecturer -> HoD -> Exam Officer -> Published)
+    match /exam_marks/{markId} {
+      allow get: if isValidId(markId) && isVerifiedUser() && (
+        isAcademicStaff() ||
+        ((resource.data.studentUid == request.auth.uid || (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.studentId)) && resource.data.workflowStatus == 'published')
+      );
+      allow list: if isVerifiedUser() && (
+        isAcademicStaff() ||
+        ((resource.data.studentUid == request.auth.uid || (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.studentId)) && resource.data.workflowStatus == 'published')
+      );
+      allow create: if isValidId(markId) && isAcademicStaff() && isValidExamMark(incoming())
+        && exists(/databases/$(database)/documents/students/$(incoming().studentId))
+        && exists(/databases/$(database)/documents/courses/$(incoming().courseId))
+        && (isExamPublisher() || incoming().workflowStatus in ['draft', 'submitted']);
+      allow update: if isValidId(markId) && isAcademicStaff() && isValidExamMark(incoming())
+        && incoming().studentId == existing().studentId
+        && incoming().courseId == existing().courseId
+        && (
+          isAdmin() ||
+          isExamPublisher() ||
+          (isHOD() && existing().workflowStatus in ['draft', 'submitted', 'moderated'] && incoming().workflowStatus in ['submitted', 'moderated'] && incoming().diff(existing()).affectedKeys().hasOnly(['catScore', 'examScore', 'totalScore', 'grade', 'gradePoints', 'workflowStatus', 'updatedBy', 'updatedAt'])) ||
+          (existing().workflowStatus in ['draft', 'submitted'] && incoming().workflowStatus in ['draft', 'submitted'] && incoming().diff(existing()).affectedKeys().hasOnly(['catScore', 'examScore', 'totalScore', 'grade', 'gradePoints', 'workflowStatus', 'updatedBy', 'updatedAt']))
+        );
+      allow delete: if isValidId(markId) && isAdmin();
+    }
+
+    // Fee Structures
+    match /fee_structures/{structureId} {
+      allow get: if isValidId(structureId);
+      allow list: if true;
+      allow create, update: if isValidId(structureId) && isFinance() && isValidFeeStructure(incoming());
+      allow delete: if isValidId(structureId) && isAdmin();
+    }
+
+    // Student Accounts
+    match /student_accounts/{studentId} {
+      allow get: if isValidId(studentId) && isVerifiedUser() && (resource.data.studentUid == request.auth.uid || isFinance() || isAdmissions() || (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == studentId));
+      allow list: if isVerifiedUser() && (resource.data.studentUid == request.auth.uid || isFinance() || isAdmissions() || (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.studentId));
+      allow create: if isValidId(studentId) && (isFinance() || isAdmissions()) && isValidStudentAccount(incoming());
+      allow update: if isValidId(studentId) && isVerifiedUser() && isValidStudentAccount(incoming()) && (
+        isFinance() ||
+        isAdmissions() ||
+        ((!('studentUid' in existing()) || existing().studentUid == '') && incoming().studentUid == request.auth.uid && hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == studentId && incoming().diff(existing()).affectedKeys().hasOnly(['studentUid', 'updatedAt']))
+      );
+      allow delete: if isValidId(studentId) && isAdmin();
+    }
+
+    // Payment Submissions (Manual Verification Gate)
+    match /payment_submissions/{paymentId} {
+      allow get: if isValidId(paymentId) && isVerifiedUser() && (resource.data.studentUid == request.auth.uid || isFinance() || (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.studentId));
+      allow list: if isVerifiedUser() && (resource.data.studentUid == request.auth.uid || isFinance() || (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.studentId));
+      allow create: if isValidId(paymentId) && isVerifiedUser() && isValidPaymentSubmission(incoming())
+        && (isFinance() || (
+          incoming().studentUid == request.auth.uid &&
+          incoming().status == 'pending_verification' &&
+          (!('verifiedBy' in incoming()) || incoming().verifiedBy == '') &&
+          (!('receiptNumber' in incoming()) || incoming().receiptNumber == '')
+        ))
+        && exists(/databases/$(database)/documents/students/$(incoming().studentId));
+      allow update: if isValidId(paymentId) && isFinance() && isValidPaymentSubmission(incoming())
+        && incoming().studentId == existing().studentId
+        && incoming().amount == existing().amount
+        && existing().status == 'pending_verification'
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'verifiedBy', 'rejectionReason', 'receiptNumber', 'updatedAt']);
+      allow delete: if isValidId(paymentId) && isAdmin();
+    }
+
+    // Official Receipts
+    match /receipts/{receiptId} {
+      allow get: if isValidId(receiptId) && isVerifiedUser() && (resource.data.studentUid == request.auth.uid || isFinance() || (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.studentId));
+      allow list: if isVerifiedUser() && (resource.data.studentUid == request.auth.uid || isFinance() || (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.studentId));
+      allow create: if isValidId(receiptId) && isFinance() && isValidReceipt(incoming())
+        && exists(/databases/$(database)/documents/payment_submissions/$(incoming().paymentId));
+      allow update, delete: if false;
+    }
+
+    // Scholarships & HELB
+    match /scholarships/{awardId} {
+      allow get: if isValidId(awardId) && isVerifiedUser() && isFinance();
+      allow list: if isVerifiedUser() && isFinance();
+      allow create: if isValidId(awardId) && isFinance() && isValidScholarship(incoming())
+        && exists(/databases/$(database)/documents/students/$(incoming().studentId));
+      allow update, delete: if isValidId(awardId) && isAdmin();
+    }
+
+    // HR Employees
+    match /employees/{empId} {
+      allow get: if isValidId(empId) && isVerifiedUser() && (resource.data.uid == request.auth.uid || isHR() || isFinance() || (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.employeeId == empId));
+      allow list: if isVerifiedUser() && (resource.data.uid == request.auth.uid || isHR() || isFinance() || (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.employeeId == resource.id));
+      allow create: if isValidId(empId) && isHR() && isValidEmployee(incoming());
+      allow update: if isValidId(empId) && isVerifiedUser() && isValidEmployee(incoming()) && (
+        isHR() ||
+        ((!('uid' in existing()) || existing().uid == '') && incoming().uid == request.auth.uid && hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.employeeId == empId && incoming().diff(existing()).affectedKeys().hasOnly(['uid', 'updatedAt']))
+      );
+      allow delete: if isValidId(empId) && isAdmin();
+    }
+
+    // Leave Requests
+    match /leave_requests/{leaveId} {
+      allow get: if isValidId(leaveId) && isVerifiedUser() && (resource.data.employeeUid == request.auth.uid || isHR());
+      allow list: if isVerifiedUser() && (resource.data.employeeUid == request.auth.uid || isHR());
+      allow create: if isValidId(leaveId) && isVerifiedUser() && isValidLeaveRequest(incoming())
+        && (isHR() || (incoming().employeeUid == request.auth.uid && incoming().status == 'pending'));
+      allow update: if isValidId(leaveId) && isHR() && isValidLeaveRequest(incoming())
+        && incoming().employeeId == existing().employeeId
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'reviewedBy', 'updatedAt']);
+      allow delete: if isValidId(leaveId) && isAdmin();
+    }
+
+    // Payroll Runs & Payslips
+    match /payroll_runs/{runId} {
+      allow get: if isValidId(runId) && isVerifiedUser() && (isHR() || isFinance() || isManagement());
+      allow list: if isVerifiedUser() && (isHR() || isFinance() || isManagement());
+      allow create: if isValidId(runId) && isHR() && isValidPayrollRun(incoming()) && incoming().status == 'draft';
+      allow update: if isValidId(runId) && isVerifiedUser() && isValidPayrollRun(incoming())
+        && incoming().createdAt == existing().createdAt
+        && (
+          isAdmin() ||
+          ((isHR() || isFinance() || isManagement()) && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'approvedBy', 'updatedAt']))
+        );
+      allow delete: if isValidId(runId) && isAdmin();
+
+      match /payslips/{payslipId} {
+        allow get: if isValidId(runId) && isValidId(payslipId) && isVerifiedUser() && (resource.data.employeeUid == request.auth.uid || isHR() || isFinance() || isManagement());
+        allow list: if isValidId(runId) && isVerifiedUser() && (resource.data.employeeUid == request.auth.uid || isHR() || isFinance() || isManagement());
+        allow create: if isValidId(runId) && isValidId(payslipId) && isHR() && isValidPayslip(incoming()) && incoming().runId == runId;
+        allow update, delete: if false;
+      }
+    }
+
+    // CollectionGroup read for employee's own payslips
+    match /{path=**}/payslips/{payslipId} {
+      allow get: if isValidId(payslipId) && isVerifiedUser() && (resource.data.employeeUid == request.auth.uid || isHR() || isFinance() || isManagement());
+      allow list: if isVerifiedUser() && (resource.data.employeeUid == request.auth.uid || isHR() || isFinance() || isManagement());
+    }
+
+    // Notices & Campus Adverts
+    match /notices/{noticeId} {
+      allow get: if isValidId(noticeId);
+      allow list: if true;
+      allow create, update: if isValidId(noticeId) && (isAdmin() || isManagement() || isAdmissions() || isAcademicStaff()) && isValidNotice(incoming());
+      allow delete: if isValidId(noticeId) && (isAdmin() || isManagement());
+    }
+
+    // Student & Staff ID Portal Bindings
+    match /portal_bindings/{bindingId} {
+      allow get: if isValidId(bindingId) && isVerifiedUser() && (
+        isAdmin() ||
+        isAdmissions() ||
+        isHR() ||
+        !('boundUid' in resource.data) ||
+        resource.data.boundUid == '' ||
+        resource.data.boundUid == request.auth.uid
+      );
+      allow list: if isAdmin() || isAdmissions() || isHR();
+      allow create: if isValidId(bindingId) && (isAdmin() || isAdmissions() || isHR()) && isValidPortalBinding(incoming());
+      allow update: if isValidId(bindingId) && isVerifiedUser() && isValidPortalBinding(incoming()) && (
+        isAdmin() ||
+        isAdmissions() ||
+        isHR() ||
+        (
+          (!('boundUid' in existing()) || existing().boundUid == '') &&
+          incoming().boundUid == request.auth.uid &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['boundUid'])
+        )
+      );
+      allow delete: if isValidId(bindingId) && isAdmin();
+    }
+
+    // Support Tickets
+    match /support_tickets/{ticketId} {
+      allow get: if isValidId(ticketId) && isVerifiedUser() && (resource.data.requesterUid == request.auth.uid || isAdmin() || isManagement() || isAdmissions() || isFinance());
+      allow list: if isVerifiedUser() && (resource.data.requesterUid == request.auth.uid || isAdmin() || isManagement() || isAdmissions() || isFinance());
+      allow create: if isValidId(ticketId) && isVerifiedUser() && isValidSupportTicket(incoming())
+        && incoming().requesterUid == request.auth.uid && incoming().status == 'open';
+      allow update: if isValidId(ticketId) && isVerifiedUser() && isValidSupportTicket(incoming())
+        && incoming().requesterUid == existing().requesterUid
+        && (isAdmin() || isManagement() || isAdmissions() || isFinance());
+      allow delete: if isValidId(ticketId) && isAdmin();
+    }
+
+    // Immutable Audit Logs
+    match /audit_logs/{logId} {
+      allow get: if isValidId(logId) && (isAdmin() || isManagement() || isFinance() || isHR());
+      allow list: if isAdmin() || isManagement() || isFinance() || isHR();
+      allow create: if isValidId(logId) && isVerifiedUser() && isValidAuditLog(incoming()) && incoming().actorUid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // Course Resources (Books, Lecture Notes, Past Papers, Lab Manuals)
+    match /course_resources/{resourceId} {
+      allow get: if isValidId(resourceId) && isVerifiedUser() && (isAcademicStaff() || isStudent());
+      allow list: if isVerifiedUser() && (isAcademicStaff() || isStudent());
+      allow create: if isValidId(resourceId) && isAcademicStaff() && isValidCourseResource(incoming())
+        && exists(/databases/$(database)/documents/courses/$(incoming().courseId))
+        && (isAdmin() || incoming().uploadedByUid == request.auth.uid);
+      allow update: if isValidId(resourceId) && isAcademicStaff() && isValidCourseResource(incoming())
+        && incoming().courseId == existing().courseId
+        && incoming().createdAt == existing().createdAt
+        && (isAdmin() || existing().uploadedByUid == request.auth.uid);
+      allow delete: if isValidId(resourceId) && (isAdmin() || (isAcademicStaff() && existing().uploadedByUid == request.auth.uid));
+    }
+
+    // Online Classes & Virtual Classrooms
+    match /online_classes/{classId} {
+      allow get: if isValidId(classId) && isVerifiedUser() && (isAcademicStaff() || isStudent());
+      allow list: if isVerifiedUser() && (isAcademicStaff() || isStudent());
+      allow create: if isValidId(classId) && isAcademicStaff() && isValidOnlineClass(incoming())
+        && exists(/databases/$(database)/documents/courses/$(incoming().courseId))
+        && (isAdmin() || incoming().lecturerUid == request.auth.uid);
+      allow update: if isValidId(classId) && isAcademicStaff() && isValidOnlineClass(incoming())
+        && incoming().courseId == existing().courseId
+        && incoming().createdAt == existing().createdAt
+        && (isAdmin() || existing().lecturerUid == request.auth.uid);
+      allow delete: if isValidId(classId) && (isAdmin() || (isAcademicStaff() && existing().lecturerUid == request.auth.uid));
+
+      match /messages/{messageId} {
+        allow get: if isValidId(classId) && isValidId(messageId) && isVerifiedUser() && (isAcademicStaff() || isStudent());
+        allow list: if isValidId(classId) && isVerifiedUser() && (isAcademicStaff() || isStudent());
+        allow create: if isValidId(classId) && isValidId(messageId) && isVerifiedUser() && (isAcademicStaff() || isStudent())
+          && isValidClassMessage(incoming())
+          && incoming().classId == classId
+          && incoming().senderUid == request.auth.uid
+          && exists(/databases/$(database)/documents/online_classes/$(classId));
+        allow update: if false;
+        allow delete: if isValidId(classId) && isValidId(messageId) && isAdmin();
+      }
+    }
+
+    // Online CATs & Online Exams
+    match /online_assessments/{assessmentId} {
+      allow get: if isValidId(assessmentId) && isVerifiedUser() && (isAcademicStaff() || (isStudent() && resource.data.status in ['published', 'closed']));
+      allow list: if isVerifiedUser() && (isAcademicStaff() || (isStudent() && resource.data.status in ['published', 'closed']));
+      allow create: if isValidId(assessmentId) && isAcademicStaff() && isValidOnlineAssessment(incoming())
+        && exists(/databases/$(database)/documents/courses/$(incoming().courseId))
+        && (isAdmin() || incoming().createdByUid == request.auth.uid);
+      allow update: if isValidId(assessmentId) && isAcademicStaff() && isValidOnlineAssessment(incoming())
+        && incoming().courseId == existing().courseId
+        && incoming().createdAt == existing().createdAt
+        && (isAdmin() || existing().createdByUid == request.auth.uid);
+      allow delete: if isValidId(assessmentId) && (isAdmin() || (isAcademicStaff() && existing().createdByUid == request.auth.uid));
+    }
+
+    // Online Assessment Submissions
+    match /assessment_submissions/{submissionId} {
+      allow get: if isValidId(submissionId) && isVerifiedUser() && (
+        isAcademicStaff() ||
+        resource.data.studentUid == request.auth.uid ||
+        (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.studentId)
+      );
+      allow list: if isVerifiedUser() && (
+        isAcademicStaff() ||
+        resource.data.studentUid == request.auth.uid ||
+        (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.studentId)
+      );
+      allow create: if isValidId(submissionId) && isVerifiedUser() && isValidAssessmentSubmission(incoming())
+        && incoming().studentUid == request.auth.uid
+        && incoming().status == 'submitted'
+        && (!('gradedBy' in incoming()) || incoming().gradedBy == '')
+        && exists(/databases/$(database)/documents/online_assessments/$(incoming().assessmentId))
+        && exists(/databases/$(database)/documents/students/$(incoming().studentId));
+      allow update: if isValidId(submissionId) && isAcademicStaff() && isValidAssessmentSubmission(incoming())
+        && incoming().assessmentId == existing().assessmentId
+        && incoming().studentId == existing().studentId
+        && incoming().studentUid == existing().studentUid
+        && incoming().diff(existing()).affectedKeys().hasOnly(['totalScore', 'status', 'feedback', 'gradedBy', 'updatedAt']);
+      allow delete: if isValidId(submissionId) && isAdmin();
+    }
+
+    // Course Assignments
+    match /course_assignments/{assignmentId} {
+      allow get: if isValidId(assignmentId) && isVerifiedUser() && (isAcademicStaff() || isStudent());
+      allow list: if isVerifiedUser() && (isAcademicStaff() || isStudent());
+      allow create: if isValidId(assignmentId) && isAcademicStaff() && isValidCourseAssignment(incoming())
+        && exists(/databases/$(database)/documents/courses/$(incoming().courseId))
+        && (isAdmin() || incoming().createdByUid == request.auth.uid);
+      allow update: if isValidId(assignmentId) && isAcademicStaff() && isValidCourseAssignment(incoming())
+        && incoming().courseId == existing().courseId
+        && incoming().createdAt == existing().createdAt
+        && (isAdmin() || existing().createdByUid == request.auth.uid);
+      allow delete: if isValidId(assignmentId) && (isAdmin() || (isAcademicStaff() && existing().createdByUid == request.auth.uid));
+    }
+
+    // Assignment Submissions
+    match /assignment_submissions/{submissionId} {
+      allow get: if isValidId(submissionId) && isVerifiedUser() && (
+        isAcademicStaff() ||
+        resource.data.studentUid == request.auth.uid ||
+        (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.studentId)
+      );
+      allow list: if isVerifiedUser() && (
+        isAcademicStaff() ||
+        resource.data.studentUid == request.auth.uid ||
+        (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.studentId)
+      );
+      allow create: if isValidId(submissionId) && isVerifiedUser() && isValidAssignmentSubmission(incoming())
+        && incoming().studentUid == request.auth.uid
+        && incoming().status == 'submitted'
+        && (!('gradedBy' in incoming()) || incoming().gradedBy == '')
+        && (!('score' in incoming()) || incoming().score == 0)
+        && exists(/databases/$(database)/documents/course_assignments/$(incoming().assignmentId))
+        && exists(/databases/$(database)/documents/students/$(incoming().studentId));
+      allow update: if isValidId(submissionId) && isVerifiedUser() && isValidAssignmentSubmission(incoming())
+        && incoming().assignmentId == existing().assignmentId
+        && incoming().studentId == existing().studentId
+        && incoming().studentUid == existing().studentUid
+        && (
+          (isAcademicStaff() && incoming().diff(existing()).affectedKeys().hasOnly(['score', 'maxMarks', 'status', 'feedback', 'gradedBy', 'updatedAt'])) ||
+          (
+            existing().studentUid == request.auth.uid &&
+            existing().status == 'submitted' &&
+            incoming().status == 'submitted' &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['submissionText', 'submissionUrl', 'fileName', 'fileDataUrl', 'updatedAt'])
+          )
+        );
+      allow delete: if isValidId(submissionId) && isAdmin();
+    }
+
+    // Real-Time Student Academic Notifications (New Grades, Assignments, Assessments)
+    match /student_notifications/{notifId} {
+      allow get: if isValidId(notifId) && isVerifiedUser() && (
+        isAcademicStaff() ||
+        (isStudent() && (
+          resource.data.targetScope == 'course' ||
+          resource.data.targetStudentUid == request.auth.uid ||
+          (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.targetStudentId)
+        ))
+      );
+      allow list: if isVerifiedUser() && (
+        isAcademicStaff() ||
+        (isStudent() && (
+          resource.data.targetScope == 'course' ||
+          resource.data.targetStudentUid == request.auth.uid ||
+          (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.targetStudentId)
+        ))
+      );
+      allow create: if isValidId(notifId) && isAcademicStaff() && isValidStudentNotification(incoming())
+        && exists(/databases/$(database)/documents/courses/$(incoming().courseId))
+        && (isAdmin() || incoming().createdByUid == request.auth.uid);
+      allow update: if isValidId(notifId) && isVerifiedUser() && isValidStudentNotification(incoming())
+        && incoming().targetScope == existing().targetScope
+        && incoming().courseId == existing().courseId
+        && incoming().sourceId == existing().sourceId
+        && incoming().createdByUid == existing().createdByUid
+        && incoming().createdAt == existing().createdAt
+        && (
+          isAcademicStaff() ||
+          (
+            existing().targetScope == 'student' &&
+            (
+              existing().targetStudentUid == request.auth.uid ||
+              (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == existing().targetStudentId)
+            ) &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['isRead', 'updatedAt'])
+          )
+        );
+      allow delete: if isValidId(notifId) && isAdmin();
+    }
+
+    // Collaborative Course Study Groups & Virtual Study Rooms
+    match /study_groups/{groupId} {
+      allow get: if isValidId(groupId) && isVerifiedUser() && (isAcademicStaff() || isStudent());
+      allow list: if isVerifiedUser() && (isAcademicStaff() || isStudent());
+      allow create: if isValidId(groupId) && isVerifiedUser() && (isStudent() || isAcademicStaff())
+        && isValidStudyGroup(incoming())
+        && incoming().creatorUid == request.auth.uid
+        && incoming().status == 'active'
+        && incoming().memberCount == 1
+        && exists(/databases/$(database)/documents/courses/$(incoming().courseId))
+        && existsAfter(/databases/$(database)/documents/study_groups/$(groupId)/members/$(request.auth.uid));
+      allow update: if isValidId(groupId) && isVerifiedUser() && (isStudent() || isAcademicStaff())
+        && isValidStudyGroup(incoming())
+        && incoming().courseId == existing().courseId
+        && incoming().creatorUid == existing().creatorUid
+        && incoming().createdAt == existing().createdAt
+        && (
+          (
+            (isAdmin() || existing().creatorUid == request.auth.uid) &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['name', 'topic', 'scheduleNote', 'meetingUrl', 'maxMembers', 'status', 'updatedAt'])
+          ) ||
+          (
+            existing().status == 'active' &&
+            incoming().memberCount == existing().memberCount + 1 &&
+            incoming().memberCount <= existing().maxMembers &&
+            !exists(/databases/$(database)/documents/study_groups/$(groupId)/members/$(request.auth.uid)) &&
+            existsAfter(/databases/$(database)/documents/study_groups/$(groupId)/members/$(request.auth.uid)) &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['memberCount', 'updatedAt'])
+          ) ||
+          (
+            incoming().memberCount == existing().memberCount - 1 &&
+            incoming().memberCount >= 0 &&
+            exists(/databases/$(database)/documents/study_groups/$(groupId)/members/$(request.auth.uid)) &&
+            !existsAfter(/databases/$(database)/documents/study_groups/$(groupId)/members/$(request.auth.uid)) &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['memberCount', 'updatedAt'])
+          ) ||
+          (
+            existing().status == 'active' &&
+            (isAdmin() || existing().creatorUid == request.auth.uid || exists(/databases/$(database)/documents/study_groups/$(groupId)/members/$(request.auth.uid))) &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['sharedNotes', 'sharedNotesUpdatedBy', 'updatedAt'])
+          )
+        );
+      allow delete: if isValidId(groupId) && isVerifiedUser() && (isAdmin() || existing().creatorUid == request.auth.uid);
+
+      match /members/{memberUid} {
+        allow get: if isValidId(groupId) && isValidId(memberUid) && isVerifiedUser() && (isAcademicStaff() || isStudent());
+        allow list: if isValidId(groupId) && isVerifiedUser() && (isAcademicStaff() || isStudent());
+        allow create: if isValidId(groupId) && isValidId(memberUid) && isVerifiedUser() && (isStudent() || isAcademicStaff())
+          && memberUid == request.auth.uid
+          && isValidStudyGroupMember(incoming())
+          && incoming().groupId == groupId
+          && incoming().uid == request.auth.uid
+          && existsAfter(/databases/$(database)/documents/study_groups/$(groupId))
+          && (
+            incoming().role == 'member' ||
+            getAfter(/databases/$(database)/documents/study_groups/$(groupId)).data.creatorUid == request.auth.uid
+          );
+        allow update: if false;
+        allow delete: if isValidId(groupId) && isValidId(memberUid) && isVerifiedUser() && (
+          isAdmin() ||
+          memberUid == request.auth.uid ||
+          get(/databases/$(database)/documents/study_groups/$(groupId)).data.creatorUid == request.auth.uid
+        );
+      }
+
+      match /messages/{messageId} {
+        allow get: if isValidId(groupId) && isValidId(messageId) && isVerifiedUser() && (
+          isAdmin() ||
+          isAcademicStaff() ||
+          exists(/databases/$(database)/documents/study_groups/$(groupId)/members/$(request.auth.uid))
+        );
+        allow list: if isValidId(groupId) && isVerifiedUser() && (
+          isAdmin() ||
+          isAcademicStaff() ||
+          exists(/databases/$(database)/documents/study_groups/$(groupId)/members/$(request.auth.uid))
+        );
+        allow create: if isValidId(groupId) && isValidId(messageId) && isVerifiedUser() && (isStudent() || isAcademicStaff())
+          && isValidStudyGroupMessage(incoming())
+          && incoming().groupId == groupId
+          && incoming().senderUid == request.auth.uid
+          && (
+            isAdmin() ||
+            isAcademicStaff() ||
+            existsAfter(/databases/$(database)/documents/study_groups/$(groupId)/members/$(request.auth.uid))
+          );
+        allow update: if false;
+        allow delete: if isValidId(groupId) && isValidId(messageId) && (
+          isAdmin() ||
+          existing().senderUid == request.auth.uid ||
+          get(/databases/$(database)/documents/study_groups/$(groupId)).data.creatorUid == request.auth.uid
+        );
+      }
+    }
+  }
+}

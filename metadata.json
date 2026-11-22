@@ -1,0 +1,6 @@
+{
+  "name": "PUST University ERP",
+  "description": "Pwani University of Science & Technology Enterprise Resource Planning platform for admissions, academics, examinations, student finance with Paybill reconciliation, and Kenyan statutory HR payroll.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
