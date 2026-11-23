@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import {
   User,
   createUserWithEmailAndPassword,
@@ -54,7 +54,7 @@ interface AuthContextValue {
     code: string,
     verificationSecret: string,
     expectedType: 'student' | 'employee'
-  ) => Promise<{ role: UserRole; fullName: string; keptAdmin?: boolean }>;
+  ) => Promise<{ role: UserRole; fullName: string; keptAdmin?: boolean; needsActivation?: boolean }>;
   signOut: () => Promise<void>;
 }
 
@@ -81,6 +81,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [authReady, setAuthReady] = useState(false);
   const [dbConnected, setDbConnected] = useState<boolean | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
+  const portalCodeFlowRef = useRef(false);
+  const lastActiveSyncedUidRef = useRef<string | null>(null);
 
   useEffect(() => {
     testConnection().then(setDbConnected);
@@ -108,7 +110,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const userRef = doc(db, 'users', user.uid);
         const snap = await getDoc(userRef);
 
-        if (!snap.exists()) {
+        if (!snap.exists() && !portalCodeFlowRef.current) {
           const now = new Date().toISOString();
           const email = (user.email || '').toLowerCase();
           let assignedRole: UserRole = 'applicant';
@@ -148,18 +150,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           await setDoc(userRef, newProfile);
           await setDoc(doc(db, 'users', user.uid, 'private', 'pii'), {
             uid: user.uid,
-            email: clampStr(user.email || 'unknown@pust.ac.ke', 200),
+            email: clampStr(user.email || 'unknown@eduvance.ac.ke', 200),
             phone: '',
             nationalId: '',
             updatedAt: now,
           });
         }
 
+        const isBootstrappedUser =
+          user.email?.toLowerCase() === BOOTSTRAPPED_ADMIN_EMAIL.toLowerCase() && user.emailVerified;
+
         unsubProfile = onSnapshot(
           userRef,
           (docSnap) => {
             if (docSnap.exists()) {
-              setProfile({ id: docSnap.id, ...(docSnap.data() as Omit<UserProfile, 'id'>) });
+              const data = docSnap.data() as Omit<UserProfile, 'id'>;
+              if (isBootstrappedUser && (data.role !== 'super_admin' || data.status !== 'active')) {
+                const ts = new Date().toISOString();
+                updateDoc(userRef, {
+                  role: 'super_admin',
+                  status: 'active',
+                  lastActiveAt: ts,
+                  updatedAt: ts,
+                }).catch(() => {});
+                setProfile({ id: docSnap.id, ...data, role: 'super_admin', status: 'active' });
+              } else {
+                setProfile({ id: docSnap.id, ...data });
+                if (lastActiveSyncedUidRef.current !== user.uid) {
+                  lastActiveSyncedUidRef.current = user.uid;
+                  const ts = new Date().toISOString();
+                  updateDoc(userRef, { lastActiveAt: ts, updatedAt: ts }).catch(() => {});
+                }
+              }
             }
             setAuthReady(true);
           },
@@ -246,7 +268,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     code: string,
     verificationSecret: string,
     expectedType: 'student' | 'employee'
-  ): Promise<{ role: UserRole; fullName: string; keptAdmin?: boolean }> => {
+  ): Promise<{ role: UserRole; fullName: string; keptAdmin?: boolean; needsActivation?: boolean }> => {
     setAuthError(null);
     const normalizedCode = code.trim().toUpperCase();
     if (!normalizedCode || !verificationSecret.trim()) {
@@ -257,120 +279,161 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       );
     }
 
-    let activeUser = auth.currentUser;
-    if (!activeUser) {
-      const result = await signInWithPopup(auth, googleProvider);
-      activeUser = result.user;
-    }
-
-    const bindingId = sanitizeId(normalizedCode);
-    const bindingRef = doc(db, 'portal_bindings', bindingId);
-    const bindingSnap = await getDoc(bindingRef);
-
-    if (!bindingSnap.exists()) {
-      throw new Error(
-        `No portal record found for ${normalizedCode}. Ensure Admissions/HR has registered this ID or Super Admin has seeded the institutional database.`
-      );
-    }
-
-    const binding = { id: bindingSnap.id, ...(bindingSnap.data() as Omit<PortalBinding, 'id'>) };
-    if (binding.targetType !== expectedType) {
-      throw new Error(
-        expectedType === 'student'
-          ? `${normalizedCode} is a Staff ID, not a Student Registration Number.`
-          : `${normalizedCode} is a Student Registration Number, not a Staff ID.`
-      );
-    }
-
-    const providedHash = await hashVerificationKey(verificationSecret);
-    if (providedHash !== binding.verificationHash) {
-      throw new Error(
-        expectedType === 'student'
-          ? 'National ID does not match the student admission record.'
-          : 'Staff passcode does not match HR records.'
-      );
-    }
-
-    if (binding.boundUid && binding.boundUid !== activeUser.uid) {
-      throw new Error(
-        `${normalizedCode} is already linked to another Google account. Contact ICT Support or Super Admin.`
-      );
-    }
-
-    const now = new Date().toISOString();
-    if (!binding.boundUid) {
-      await updateDoc(bindingRef, { boundUid: activeUser.uid });
-    }
-
-    const userRef = doc(db, 'users', activeUser.uid);
-    const userSnap = await getDoc(userRef);
-    const isAdminAccount =
-      activeUser.email?.toLowerCase() === BOOTSTRAPPED_ADMIN_EMAIL.toLowerCase() && activeUser.emailVerified;
-
-    if (isAdminAccount || (userSnap.exists() && userSnap.data().role === 'super_admin')) {
-      setPreviewRole(binding.role);
-      return { role: binding.role, fullName: binding.fullName, keptAdmin: true };
-    }
-
-    if (!userSnap.exists()) {
-      const payload: Record<string, unknown> = {
-        uid: activeUser.uid,
-        displayName: clampStr(binding.fullName || activeUser.displayName || 'Portal User', 160),
-        role: binding.role,
-        bindingId,
-        status: 'active',
-        createdAt: now,
-        updatedAt: now,
-      };
-      if (expectedType === 'student') payload.studentId = binding.targetId;
-      if (expectedType === 'employee') payload.employeeId = binding.targetId;
-      await setDoc(userRef, payload);
-      await setDoc(doc(db, 'users', activeUser.uid, 'private', 'pii'), {
-        uid: activeUser.uid,
-        email: clampStr(activeUser.email || 'unknown@pust.ac.ke', 200),
-        phone: '',
-        nationalId: expectedType === 'student' ? clampStr(verificationSecret, 32) : '',
-        updatedAt: now,
-      });
-    } else {
-      const updatePayload: Record<string, unknown> = {
-        role: binding.role,
-        bindingId,
-        updatedAt: now,
-      };
-      if (expectedType === 'student') updatePayload.studentId = binding.targetId;
-      if (expectedType === 'employee') updatePayload.employeeId = binding.targetId;
-      await updateDoc(userRef, updatePayload);
-    }
-
-    if (expectedType === 'student') {
-      try {
-        const stuRef = doc(db, 'students', binding.targetId);
-        const stuSnap = await getDoc(stuRef);
-        if (stuSnap.exists() && !stuSnap.data().uid) {
-          await updateDoc(stuRef, { uid: activeUser.uid, updatedAt: now });
+    portalCodeFlowRef.current = true;
+    try {
+      let activeUser = auth.currentUser;
+      if (!activeUser) {
+        try {
+          const result = await signInWithPopup(auth, googleProvider);
+          activeUser = result.user;
+        } catch (err: unknown) {
+          const errCode = (err as { code?: string })?.code || '';
+          if (errCode === 'auth/popup-closed-by-user') {
+            throw new Error('Google verification window was closed before completing sign-in.');
+          }
+          if (errCode === 'auth/popup-blocked') {
+            throw new Error('Browser blocked the verification popup. Allow popups or sign in first using Google SSO.');
+          }
+          throw err;
         }
-        const acctRef = doc(db, 'student_accounts', binding.targetId);
-        const acctSnap = await getDoc(acctRef);
-        if (acctSnap.exists() && !acctSnap.data().studentUid) {
-          await updateDoc(acctRef, { studentUid: activeUser.uid, updatedAt: now });
-        }
-      } catch {
-        // Safe if already linked
       }
-    } else {
-      try {
-        const empRef = doc(db, 'employees', binding.targetId);
-        const empSnap = await getDoc(empRef);
-        if (empSnap.exists() && !empSnap.data().uid) {
-          await updateDoc(empRef, { uid: activeUser.uid, updatedAt: now });
-        }
-      } catch {
-        // Safe if already linked
-      }
-    }
 
-    return { role: binding.role, fullName: binding.fullName };
+      let bindingId = sanitizeId(normalizedCode);
+      let bindingRef = doc(db, 'portal_bindings', bindingId);
+      let bindingSnap = await getDoc(bindingRef);
+
+      if (!bindingSnap.exists()) {
+        const aliasCode = normalizedCode.startsWith('EDU')
+          ? `PUST${normalizedCode.slice(3)}`
+          : normalizedCode.startsWith('PUST')
+          ? `EDU${normalizedCode.slice(4)}`
+          : '';
+        if (aliasCode) {
+          const aliasId = sanitizeId(aliasCode);
+          const aliasRef = doc(db, 'portal_bindings', aliasId);
+          const aliasSnap = await getDoc(aliasRef);
+          if (aliasSnap.exists()) {
+            bindingId = aliasId;
+            bindingRef = aliasRef;
+            bindingSnap = aliasSnap;
+          }
+        }
+      }
+
+      if (!bindingSnap.exists()) {
+        throw new Error(
+          `No portal record found for ${normalizedCode}. Confirm the Registration / Staff ID or ask Admissions/HR to register your record.`
+        );
+      }
+
+      const binding = { id: bindingSnap.id, ...(bindingSnap.data() as Omit<PortalBinding, 'id'>) };
+      if (binding.targetType !== expectedType) {
+        throw new Error(
+          expectedType === 'student'
+            ? `${normalizedCode} is a Staff ID, not a Student Registration Number.`
+            : `${normalizedCode} is a Student Registration Number, not a Staff ID.`
+        );
+      }
+
+      const providedHash = await hashVerificationKey(verificationSecret.trim());
+      if (providedHash !== binding.verificationHash) {
+        throw new Error(
+          expectedType === 'student'
+            ? 'National ID / Birth Cert Number does not match the student admission record.'
+            : 'Staff verification passcode does not match HR records.'
+        );
+      }
+
+      if (binding.boundUid && binding.boundUid !== activeUser.uid) {
+        throw new Error(
+          `${normalizedCode} is already linked to another account. Contact ICT Support or Admissions/HR to reset the binding.`
+        );
+      }
+
+      const now = new Date().toISOString();
+      if (!binding.boundUid) {
+        await updateDoc(bindingRef, { boundUid: activeUser.uid });
+      }
+
+      const userRef = doc(db, 'users', activeUser.uid);
+      const userSnap = await getDoc(userRef);
+      const isAdminAccount =
+        activeUser.email?.toLowerCase() === BOOTSTRAPPED_ADMIN_EMAIL.toLowerCase() && activeUser.emailVerified;
+
+      if (isAdminAccount || (userSnap.exists() && userSnap.data().role === 'super_admin')) {
+        setPreviewRole(binding.role);
+        return { role: binding.role, fullName: binding.fullName, keptAdmin: true };
+      }
+
+      if (!userSnap.exists()) {
+        const payload: Record<string, unknown> = {
+          uid: activeUser.uid,
+          displayName: clampStr(binding.fullName || activeUser.displayName || 'Portal User', 160),
+          role: binding.role,
+          bindingId,
+          status: 'active',
+          createdAt: now,
+          updatedAt: now,
+        };
+        if (expectedType === 'student') payload.studentId = binding.targetId;
+        if (expectedType === 'employee') payload.employeeId = binding.targetId;
+        await setDoc(userRef, payload);
+        await setDoc(doc(db, 'users', activeUser.uid, 'private', 'pii'), {
+          uid: activeUser.uid,
+          email: clampStr(activeUser.email || 'unknown@eduvance.ac.ke', 200),
+          phone: '',
+          nationalId: expectedType === 'student' ? clampStr(verificationSecret, 32) : '',
+          updatedAt: now,
+        });
+      } else {
+        const updatePayload: Record<string, unknown> = {
+          role: binding.role,
+          bindingId,
+          updatedAt: now,
+        };
+        if (expectedType === 'student') updatePayload.studentId = binding.targetId;
+        if (expectedType === 'employee') updatePayload.employeeId = binding.targetId;
+        await updateDoc(userRef, updatePayload);
+      }
+
+      let needsActivation = binding.activated === false;
+
+      if (expectedType === 'student') {
+        try {
+          const stuRef = doc(db, 'students', binding.targetId);
+          const stuSnap = await getDoc(stuRef);
+          if (stuSnap.exists()) {
+            if (stuSnap.data().accountActivated === false) {
+              needsActivation = true;
+            }
+            if (!stuSnap.data().uid) {
+              await updateDoc(stuRef, { uid: activeUser.uid, updatedAt: now });
+            }
+          }
+          const acctRef = doc(db, 'student_accounts', binding.targetId);
+          const acctSnap = await getDoc(acctRef);
+          if (acctSnap.exists() && !acctSnap.data().studentUid) {
+            await updateDoc(acctRef, { studentUid: activeUser.uid, updatedAt: now });
+          }
+        } catch {
+          // Safe if already linked
+        }
+      } else {
+        try {
+          const empRef = doc(db, 'employees', binding.targetId);
+          const empSnap = await getDoc(empRef);
+          if (empSnap.exists() && !empSnap.data().uid) {
+            await updateDoc(empRef, { uid: activeUser.uid, updatedAt: now });
+          }
+        } catch {
+          // Safe if already linked
+        }
+      }
+
+      return { role: binding.role, fullName: binding.fullName, needsActivation };
+    } finally {
+      portalCodeFlowRef.current = false;
+    }
   };
 
   const signOut = async () => {
@@ -378,12 +441,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await firebaseSignOut(auth);
   };
 
-  const actualRole: UserRole =
-    profile?.role ??
-    (firebaseUser?.email?.toLowerCase() === BOOTSTRAPPED_ADMIN_EMAIL.toLowerCase() &&
-    firebaseUser?.emailVerified
-      ? 'super_admin'
-      : 'applicant');
+  const isBootstrappedAdmin =
+    firebaseUser?.email?.toLowerCase() === BOOTSTRAPPED_ADMIN_EMAIL.toLowerCase() &&
+    Boolean(firebaseUser?.emailVerified);
+
+  const actualRole: UserRole = isBootstrappedAdmin
+    ? 'super_admin'
+    : (profile?.role ?? 'applicant');
 
   const effectiveRole: UserRole =
     actualRole === 'super_admin' && previewRole ? previewRole : actualRole;

@@ -1,17 +1,42 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { doc, setDoc, updateDoc } from 'firebase/firestore';
-import { BookPlus, CheckSquare, ClipboardCheck, Download, GraduationCap, Search, TrendingUp } from 'lucide-react';
+import { doc, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
+import {
+  BookPlus,
+  Building2,
+  CalendarDays,
+  CheckCircle2,
+  CheckSquare,
+  ClipboardCheck,
+  Download,
+  FileSpreadsheet,
+  GraduationCap,
+  KeyRound,
+  Search,
+  TrendingUp,
+  UserPlus,
+  X,
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
+import { BulkStudentImportModal } from '../components/BulkStudentImportModal';
+import { ExamTimetablePanel } from '../components/ExamTimetablePanel';
 import { StudentGradeTrendPanel } from '../components/StudentGradeTrendPanel';
 import { ErpDataset } from '../hooks/useErpData';
-import { db, handleFirestoreError, makeId, OperationType } from '../lib/firebase';
+import {
+  clampStr,
+  db,
+  handleFirestoreError,
+  hashVerificationKey,
+  makeId,
+  OperationType,
+  sanitizeId,
+} from '../lib/firebase';
 import {
   bulkTransitionCourseMarks,
   recordAuditLog,
   saveExamMarkWithAudit,
 } from '../lib/erpService';
-import { evaluateKenyanGrade } from '../lib/kenyaEngine';
+import { evaluateKenyanGrade, generateAdmissionNumber } from '../lib/kenyaEngine';
 import { exportToCSV, generateTranscriptPDF } from '../lib/pdfGenerator';
 import { GradingRule, Student } from '../types/erp';
 
@@ -32,7 +57,7 @@ export function StudentsAcademicsModule({ mode, data }: StudentsAcademicsModuleP
   const canModerate = ['super_admin', 'hod', 'exam_officer'].includes(effectiveRole);
   const canPublish = ['super_admin', 'exam_officer'].includes(effectiveRole);
 
-  const [tab, setTab] = useState<'directory' | 'registration' | 'trends' | 'marks' | 'attendance'>(
+  const [tab, setTab] = useState<'directory' | 'registration' | 'timetable' | 'trends' | 'marks' | 'attendance'>(
     mode === 'students' ? 'directory' : effectiveRole === 'student' ? 'registration' : 'marks'
   );
 
@@ -49,6 +74,30 @@ export function StudentsAcademicsModule({ mode, data }: StudentsAcademicsModuleP
   const [selectedStudentId, setSelectedStudentId] = useState('');
   const [attendanceTopic, setAttendanceTopic] = useState('');
   const [presentIds, setPresentIds] = useState<string[]>([]);
+
+  // Direct Student Registration State (Admin / Management / Admissions)
+  const [showAddStudentForm, setShowAddStudentForm] = useState(false);
+  const [showBulkModal, setShowBulkModal] = useState(false);
+  const [newStuName, setNewStuName] = useState('');
+  const [newStuAdmissionNo, setNewStuAdmissionNo] = useState('');
+  const [newStuNationalId, setNewStuNationalId] = useState('');
+  const [newStuEmail, setNewStuEmail] = useState('');
+  const [newStuPhone, setNewStuPhone] = useState('');
+  const [newStuDeptId, setNewStuDeptId] = useState('');
+  const [newStuProgrammeId, setNewStuProgrammeId] = useState('');
+  const [newStuCategory, setNewStuCategory] = useState<'KUCCPS' | 'Self-Sponsored'>('KUCCPS');
+  const [newStuYear, setNewStuYear] = useState('1');
+  const [newStuSemester, setNewStuSemester] = useState('1');
+  const [newStuRequireActivation, setNewStuRequireActivation] = useState(true);
+  const [creatingStudent, setCreatingStudent] = useState(false);
+
+  // Student Registration Academic Path Selection (Department, Course, Year of Study)
+  const [regDeptId, setRegDeptId] = useState('');
+  const [regProgId, setRegProgId] = useState('');
+  const [regYear, setRegYear] = useState('1');
+  const [regSemester, setRegSemester] = useState('1');
+  const [savingPath, setSavingPath] = useState(false);
+  const [showAllCourseUnits, setShowAllCourseUnits] = useState(false);
 
   // Marks Draft Buffer per studentId
   const [draftMarks, setDraftMarks] = useState<Record<string, { cat: string; exam: string }>>({});
@@ -77,6 +126,15 @@ export function StudentsAcademicsModule({ mode, data }: StudentsAcademicsModuleP
       ? data.students.find((s) => s.id === profile?.studentId || s.uid === firebaseUser?.uid) ??
         (isSuperAdmin ? data.students[0] : undefined)
       : data.students.find((s) => s.id === selectedStudentId) ?? data.students[0];
+
+  useEffect(() => {
+    if (!myStudent) return;
+    const prog = data.programmes.find((p) => p.id === myStudent.programmeId);
+    setRegDeptId(myStudent.departmentId || prog?.departmentId || data.departments[0]?.id || '');
+    setRegProgId(myStudent.programmeId || prog?.id || '');
+    setRegYear(String(myStudent.yearOfStudy || 1));
+    setRegSemester(String(myStudent.semester || 1));
+  }, [myStudent?.id, myStudent?.departmentId, myStudent?.programmeId, myStudent?.yearOfStudy, myStudent?.semester, data.programmes, data.departments]);
 
   const filteredStudents = data.students.filter(
     (s) =>
@@ -135,6 +193,184 @@ export function StudentsAcademicsModule({ mode, data }: StudentsAcademicsModuleP
       showToast(`Clearance updated for ${stu.admissionNo}.`, 'success');
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `students/${stu.id}`);
+    }
+  };
+
+  const handleCreateDirectStudent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!firebaseUser || !profile) return;
+    const deptProgs = newStuDeptId
+      ? data.programmes.filter((p) => p.departmentId === newStuDeptId)
+      : data.programmes;
+    const progId = newStuProgrammeId || deptProgs[0]?.id || data.programmes[0]?.id || '';
+    const prog = data.programmes.find((p) => p.id === progId);
+    if (!prog) {
+      showToast('Select a valid academic programme.', 'error');
+      return;
+    }
+
+    const cleanNationalId = clampStr(newStuNationalId, 32);
+    if (cleanNationalId.length < 4) {
+      showToast('Enter a National ID or Passport (min 4 chars) for student portal login verification.', 'error');
+      return;
+    }
+
+    const admissionNo = (
+      clampStr(newStuAdmissionNo, 64) ||
+      generateAdmissionNumber(prog.code || 'GEN', data.students.length + 1)
+    ).toUpperCase();
+
+    const studentId = makeId('stu');
+    const now = new Date().toISOString();
+    const feeStruct = data.feeStructures.find(
+      (f) => f.programmeId === prog.id && f.category === newStuCategory
+    );
+    const initialFee = Number(feeStruct?.totalFee ?? 0);
+    const verificationHash = await hashVerificationKey(cleanNationalId);
+    const dept = data.departments.find((d) => d.id === (newStuDeptId || prog.departmentId));
+
+    setCreatingStudent(true);
+    try {
+      const batch = writeBatch(db);
+      batch.set(doc(db, 'students', studentId), {
+        admissionNo,
+        fullName: clampStr(newStuName, 160),
+        email: clampStr(newStuEmail, 200),
+        phone: clampStr(newStuPhone, 32),
+        nationalId: cleanNationalId,
+        programmeId: prog.id,
+        programmeName: prog.name,
+        departmentId: dept?.id || prog.departmentId || '',
+        facultyId: dept?.facultyId || '',
+        yearOfStudy: Math.min(prog.durationYears || 7, Math.max(1, Number(newStuYear) || 1)),
+        semester: Math.min(3, Math.max(1, Number(newStuSemester) || 1)),
+        category: newStuCategory,
+        academicStatus: 'Active',
+        clearanceFinance: initialFee <= 0,
+        clearanceLibrary: false,
+        clearanceDepartment: false,
+        clearanceExams: false,
+        accountActivated: !newStuRequireActivation,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      batch.set(doc(db, 'student_accounts', studentId), {
+        studentId,
+        studentUid: '',
+        admissionNo,
+        studentName: clampStr(newStuName, 160),
+        totalBilled: initialFee,
+        totalPaid: 0,
+        scholarshipsTotal: 0,
+        balance: initialFee,
+        cleared: initialFee <= 0,
+        updatedAt: now,
+      });
+
+      batch.set(doc(db, 'portal_bindings', sanitizeId(admissionNo)), {
+        code: admissionNo,
+        targetType: 'student',
+        targetId: studentId,
+        role: 'student',
+        fullName: clampStr(newStuName, 160),
+        verificationHash,
+        boundUid: '',
+        activated: !newStuRequireActivation,
+        createdAt: now,
+      });
+
+      await batch.commit();
+      await recordAuditLog(
+        { uid: firebaseUser.uid, name: profile.displayName, role: profile.role },
+        'STUDENT_DIRECTLY_ENROLLED',
+        `students/${studentId}`,
+        `Enrolled ${newStuName} (${admissionNo}) with Registration-Number login binding.`
+      );
+      showToast(`Enrolled ${admissionNo}. Student can now sign in via Registration No + National ID.`, 'success');
+      setShowAddStudentForm(false);
+      setNewStuName('');
+      setNewStuAdmissionNo('');
+      setNewStuNationalId('');
+      setNewStuEmail('');
+      setNewStuPhone('');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `students/${studentId}`);
+    } finally {
+      setCreatingStudent(false);
+    }
+  };
+
+  const handleResetStudentLoginBinding = async (stu: Student) => {
+    if (!firebaseUser || !profile) return;
+    const bindingId = sanitizeId(stu.admissionNo.toUpperCase());
+    try {
+      await updateDoc(doc(db, 'portal_bindings', bindingId), {
+        boundUid: '',
+      });
+      await updateDoc(doc(db, 'students', stu.id), {
+        uid: '',
+        updatedAt: new Date().toISOString(),
+      });
+      await recordAuditLog(
+        { uid: firebaseUser.uid, name: profile.displayName, role: profile.role },
+        'STUDENT_LOGIN_BINDING_RESET',
+        `portal_bindings/${bindingId}`,
+        `Reset portal login binding for ${stu.admissionNo}.`
+      );
+      showToast(`Login binding reset for ${stu.admissionNo}. Student can re-bind on next sign-in.`, 'success');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `portal_bindings/${bindingId}`);
+    }
+  };
+
+  const handleSaveStudentAcademicPath = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!myStudent || !firebaseUser || !profile) return;
+    const deptProgrammes = regDeptId
+      ? data.programmes.filter((p) => p.departmentId === regDeptId)
+      : data.programmes;
+    const chosenProg =
+      data.programmes.find((p) => p.id === regProgId) || deptProgrammes[0] || data.programmes[0];
+    if (!chosenProg) {
+      showToast('Select a valid course first.', 'error');
+      return;
+    }
+
+    const chosenDeptId = regDeptId || chosenProg.departmentId || '';
+    const yr = Math.min(chosenProg.durationYears || 7, Math.max(1, Number(regYear) || 1));
+    const sem = Math.min(3, Math.max(1, Number(regSemester) || 1));
+    const now = new Date().toISOString();
+
+    setSavingPath(true);
+    try {
+      await updateDoc(doc(db, 'students', myStudent.id), {
+        departmentId: chosenDeptId,
+        programmeId: chosenProg.id,
+        programmeName: clampStr(chosenProg.name, 180),
+        yearOfStudy: yr,
+        semester: sem,
+        updatedAt: now,
+      });
+      if (effectiveRole === 'student' && !isSuperAdmin) {
+        await updateDoc(doc(db, 'users', firebaseUser.uid), {
+          departmentId: chosenDeptId,
+          programmeId: chosenProg.id,
+          lastActiveAt: now,
+          updatedAt: now,
+        }).catch(() => {});
+      }
+      await recordAuditLog(
+        { uid: firebaseUser.uid, name: profile.displayName, role: profile.role },
+        'STUDENT_ACADEMIC_PATH_UPDATED',
+        `students/${myStudent.id}`,
+        `Updated ${myStudent.admissionNo} registration path to ${chosenProg.code} · Year ${yr}.${sem}.`
+      );
+      showToast(`Saved Department, Course (${chosenProg.code}), and Year ${yr}.${sem}.`, 'success');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `students/${myStudent.id}`);
+    } finally {
+      setSavingPath(false);
     }
   };
 
@@ -310,7 +546,7 @@ export function StudentsAcademicsModule({ mode, data }: StudentsAcademicsModuleP
           <button
             type="button"
             onClick={() => setTab('registration')}
-            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 ${
               tab === 'registration'
                 ? 'bg-white dark:bg-[#1E293B] text-slate-900 dark:text-white shadow-sm'
                 : 'text-slate-600 dark:text-slate-400'
@@ -320,8 +556,20 @@ export function StudentsAcademicsModule({ mode, data }: StudentsAcademicsModuleP
           </button>
           <button
             type="button"
+            onClick={() => setTab('timetable')}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 ${
+              tab === 'timetable'
+                ? 'bg-white dark:bg-[#1E293B] text-slate-900 dark:text-white shadow-sm'
+                : 'text-slate-600 dark:text-slate-400'
+            }`}
+          >
+            <CalendarDays className="w-3.5 h-3.5" />
+            <span>Exam Timetable</span>
+          </button>
+          <button
+            type="button"
             onClick={() => setTab('trends')}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 ${
               tab === 'trends'
                 ? 'bg-white dark:bg-[#1E293B] text-slate-900 dark:text-white shadow-sm'
                 : 'text-slate-600 dark:text-slate-400'
@@ -451,28 +699,246 @@ export function StudentsAcademicsModule({ mode, data }: StudentsAcademicsModuleP
                 className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827]"
               />
             </div>
-            <button
-              type="button"
-              onClick={() =>
-                exportToCSV(
-                  'PUST_Student_Directory.csv',
-                  ['Admission No', 'Full Name', 'Programme', 'Year', 'Category', 'Status'],
-                  filteredStudents.map((s) => [
-                    s.admissionNo,
-                    s.fullName,
-                    s.programmeName || s.programmeId,
-                    s.yearOfStudy,
-                    s.category,
-                    s.academicStatus,
-                  ])
-                )
-              }
-              className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#111827]"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>Export Student List CSV</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              {canEditStatus && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setShowBulkModal(true)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg border border-amber-500/40 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                    <span>Bulk Upload Excel</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddStudentForm((v) => !v)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg bg-amber-600 hover:bg-amber-500 text-white"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" />
+                    <span>{showAddStudentForm ? 'Close Form' : 'Register Student'}</span>
+                  </button>
+                </>
+              )}
+              <button
+                type="button"
+                onClick={() =>
+                  exportToCSV(
+                    'EDUVANCE_Student_Directory.csv',
+                    ['Admission No', 'Full Name', 'Programme', 'Year', 'Category', 'Status'],
+                    filteredStudents.map((s) => [
+                      s.admissionNo,
+                      s.fullName,
+                      s.programmeName || s.programmeId,
+                      s.yearOfStudy,
+                      s.category,
+                      s.academicStatus,
+                    ])
+                  )
+                }
+                className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#111827]"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Export Student List CSV</span>
+              </button>
+            </div>
           </div>
+
+          {canEditStatus && showAddStudentForm && (
+            <form
+              onSubmit={handleCreateDirectStudent}
+              className="border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-[#111827] p-5 space-y-4"
+            >
+              <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                    Direct Student Enrollment &amp; Registration Number Provisioning
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Automatically creates a student portal login binding using Admission No + National ID.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAddStudentForm(false)}
+                  className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
+                    Full Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newStuName}
+                    onChange={(e) => setNewStuName(e.target.value)}
+                    placeholder="e.g. Brian Kiprop Mutai"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
+                    Registration / Admission No (Blank = Auto)
+                  </label>
+                  <input
+                    type="text"
+                    value={newStuAdmissionNo}
+                    onChange={(e) => setNewStuAdmissionNo(e.target.value)}
+                    placeholder="e.g. EDU/CSC/2026/0099"
+                    className="w-full px-3 py-2 text-sm font-mono uppercase rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
+                    National ID / Passport (Login Key)
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newStuNationalId}
+                    onChange={(e) => setNewStuNationalId(e.target.value)}
+                    placeholder="e.g. 39481022"
+                    className="w-full px-3 py-2 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
+                    Department
+                  </label>
+                  <select
+                    value={newStuDeptId}
+                    onChange={(e) => {
+                      const dId = e.target.value;
+                      setNewStuDeptId(dId);
+                      const firstProg = data.programmes.find((p) => !dId || p.departmentId === dId);
+                      if (firstProg) setNewStuProgrammeId(firstProg.id);
+                    }}
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
+                  >
+                    <option value="">All Departments</option>
+                    {data.departments.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.code} — {d.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
+                    Course / Programme
+                  </label>
+                  <select
+                    value={newStuProgrammeId || data.programmes.find((p) => !newStuDeptId || p.departmentId === newStuDeptId)?.id || ''}
+                    onChange={(e) => setNewStuProgrammeId(e.target.value)}
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
+                  >
+                    {data.programmes
+                      .filter((p) => !newStuDeptId || p.departmentId === newStuDeptId)
+                      .map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.code} — {p.name} ({p.durationYears} Yrs)
+                        </option>
+                      ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
+                    Category
+                  </label>
+                  <select
+                    value={newStuCategory}
+                    onChange={(e) => setNewStuCategory(e.target.value as 'KUCCPS' | 'Self-Sponsored')}
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
+                  >
+                    <option value="KUCCPS">KUCCPS</option>
+                    <option value="Self-Sponsored">Self-Sponsored</option>
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
+                      Year
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={7}
+                      value={newStuYear}
+                      onChange={(e) => setNewStuYear(e.target.value)}
+                      className="w-full px-3 py-2 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
+                      Sem
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={3}
+                      value={newStuSemester}
+                      onChange={(e) => setNewStuSemester(e.target.value)}
+                      className="w-full px-3 py-2 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
+                    Email (Optional)
+                  </label>
+                  <input
+                    type="email"
+                    value={newStuEmail}
+                    onChange={(e) => setNewStuEmail(e.target.value)}
+                    placeholder="student@students.eduvance.ac.ke"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
+                    Phone Number (Optional)
+                  </label>
+                  <input
+                    type="tel"
+                    value={newStuPhone}
+                    onChange={(e) => setNewStuPhone(e.target.value)}
+                    placeholder="+2547..."
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <label className="inline-flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={newStuRequireActivation}
+                    onChange={(e) => setNewStuRequireActivation(e.target.checked)}
+                    className="rounded border-slate-300"
+                  />
+                  <span>Prompt student to activate newly issued account on first login</span>
+                </label>
+                <button
+                  type="submit"
+                  disabled={creatingStudent}
+                  className="px-4 py-2 text-xs font-semibold rounded-lg bg-amber-600 hover:bg-amber-500 text-white disabled:opacity-60"
+                >
+                  {creatingStudent ? 'Provisioning...' : 'Enroll Student & Enable Login'}
+                </button>
+              </div>
+            </form>
+          )}
 
           <div className="border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-[#111827] overflow-x-auto">
             <table className="w-full text-left text-sm">
@@ -496,7 +962,8 @@ export function StudentsAcademicsModule({ mode, data }: StudentsAcademicsModuleP
                       <td className="py-3 px-4">
                         <p className="font-medium text-slate-900 dark:text-slate-100">{stu.fullName}</p>
                         <p className="text-xs text-slate-500 dark:text-slate-400">
-                          {stu.programmeName || stu.programmeId} · Yr {stu.yearOfStudy} · {stu.category}
+                          {stu.programmeName || stu.programmeId} · Yr {stu.yearOfStudy}.{stu.semester} · {stu.category}
+                          {stu.accountActivated === false ? ' · Activation Pending' : ''}
                         </p>
                       </td>
                       <td className="py-3 px-4">
@@ -543,6 +1010,17 @@ export function StudentsAcademicsModule({ mode, data }: StudentsAcademicsModuleP
                         </button>
                       </td>
                       <td className="py-3 px-4 text-right whitespace-nowrap space-x-2">
+                        {canEditStatus && (
+                          <button
+                            type="button"
+                            onClick={() => handleResetStudentLoginBinding(stu)}
+                            title="Reset portal login binding for this Registration No"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 hover:border-amber-500"
+                          >
+                            <KeyRound className="w-3.5 h-3.5 text-slate-400" />
+                            <span>Reset Login</span>
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => {
@@ -599,54 +1077,202 @@ export function StudentsAcademicsModule({ mode, data }: StudentsAcademicsModuleP
               No student profile linked yet. Sign in via Student Registration No or wait for Admissions approval.
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              {/* Available Courses */}
-              <div className="lg:col-span-6 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-[#111827] overflow-hidden">
-                <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
-                    Available Semester Units
-                  </h3>
-                  <span className="text-xs font-mono text-slate-500 dark:text-slate-400">
+            <div className="space-y-6">
+              {/* Student Department, Course & Year of Study Selector */}
+              <form
+                onSubmit={handleSaveStudentAcademicPath}
+                className="border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-[#111827] p-5 space-y-4"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Building2 className="w-4 h-4 text-amber-500" />
+                    <div>
+                      <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                        Department, Course &amp; Current Year of Study Registration
+                      </h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Select your academic department, degree/diploma course, and current year of study to match semester units.
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-xs font-mono text-amber-600 dark:text-amber-400">
                     {myStudent.admissionNo}
                   </span>
                 </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
+                      Department
+                    </label>
+                    <select
+                      value={regDeptId}
+                      onChange={(e) => {
+                        const dId = e.target.value;
+                        setRegDeptId(dId);
+                        const firstProg = data.programmes.find((p) => !dId || p.departmentId === dId);
+                        if (firstProg) setRegProgId(firstProg.id);
+                      }}
+                      className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
+                    >
+                      {data.departments.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.code} — {d.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="lg:col-span-2">
+                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
+                      Course / Programme
+                    </label>
+                    <select
+                      value={regProgId}
+                      onChange={(e) => setRegProgId(e.target.value)}
+                      className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
+                    >
+                      {data.programmes
+                        .filter((p) => !regDeptId || p.departmentId === regDeptId)
+                        .map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.code} — {p.name} ({p.durationYears} Years)
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
+                        Year of Study
+                      </label>
+                      <select
+                        value={regYear}
+                        onChange={(e) => setRegYear(e.target.value)}
+                        className="w-full px-2.5 py-2 text-xs font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
+                      >
+                        {Array.from(
+                          {
+                            length:
+                              data.programmes.find((p) => p.id === regProgId)?.durationYears || 6,
+                          },
+                          (_, idx) => idx + 1
+                        ).map((yr) => (
+                          <option key={yr} value={String(yr)}>
+                            Year {yr}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
+                        Semester
+                      </label>
+                      <select
+                        value={regSemester}
+                        onChange={(e) => setRegSemester(e.target.value)}
+                        className="w-full px-2.5 py-2 text-xs font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
+                      >
+                        <option value="1">Sem 1</option>
+                        <option value="2">Sem 2</option>
+                        <option value="3">Sem 3</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={savingPath}
+                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-amber-600 hover:bg-amber-500 text-white disabled:opacity-60 whitespace-nowrap"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>{savingPath ? 'Saving...' : 'Save Academic Selection'}</span>
+                  </button>
+                </div>
+              </form>
+
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              {/* Available Courses */}
+              <div className="lg:col-span-6 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-[#111827] overflow-hidden">
+                <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                      Available Semester Units
+                    </h3>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      {showAllCourseUnits
+                        ? 'Showing all university units'
+                        : `Filtered for ${myStudent.programmeName || myStudent.programmeId} · Yr ${myStudent.yearOfStudy}.${myStudent.semester}`}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowAllCourseUnits((v) => !v)}
+                    className="px-2.5 py-1 text-xs font-medium rounded-md border border-slate-300 dark:border-slate-700 hover:border-amber-500"
+                  >
+                    {showAllCourseUnits ? `Filter Yr ${myStudent.yearOfStudy}.${myStudent.semester}` : 'Show All Units'}
+                  </button>
+                </div>
                 <div className="divide-y divide-slate-200 dark:divide-slate-800">
-                  {data.courses.map((course) => {
-                    const isReg = data.registrations.some(
-                      (r) =>
-                        r.studentId === myStudent.id &&
-                        r.courseId === course.id &&
-                        r.status === 'registered'
+                  {(() => {
+                    const matched = data.courses.filter(
+                      (c) =>
+                        c.programmeId === myStudent.programmeId &&
+                        c.yearLevel === myStudent.yearOfStudy &&
+                        c.semesterNumber === myStudent.semester
                     );
-                    return (
-                      <div key={course.id} className="p-4 flex items-center justify-between gap-4">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                            <span className="font-mono text-amber-600 dark:text-amber-400 mr-2">
-                              {course.code}
-                            </span>
-                            {course.title}
-                          </p>
-                          <p className="text-xs text-slate-500 dark:text-slate-400">
-                            {course.creditUnits} Units · {course.schedule || 'TBA'} · {course.room || 'TBA'}
-                          </p>
+                    const displayedCourses = showAllCourseUnits
+                      ? data.courses
+                      : matched.length > 0
+                      ? matched
+                      : data.courses.filter((c) => c.programmeId === myStudent.programmeId);
+
+                    if (displayedCourses.length === 0) {
+                      return (
+                        <p className="p-6 text-xs text-slate-500 text-center">
+                          No units found for this selection yet. Toggle &ldquo;Show All Units&rdquo; or ask your department admin to register units.
+                        </p>
+                      );
+                    }
+
+                    return displayedCourses.map((course) => {
+                      const isReg = data.registrations.some(
+                        (r) =>
+                          r.studentId === myStudent.id &&
+                          r.courseId === course.id &&
+                          r.status === 'registered'
+                      );
+                      return (
+                        <div key={course.id} className="p-4 flex items-center justify-between gap-4">
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                              <span className="font-mono text-amber-600 dark:text-amber-400 mr-2">
+                                {course.code}
+                              </span>
+                              {course.title}
+                            </p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+                              Yr {course.yearLevel}.{course.semesterNumber} · {course.creditUnits} Units · {course.schedule || 'TBA'} · {course.room || 'TBA'}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={isReg}
+                            onClick={() => handleRegisterUnit(course.id)}
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg whitespace-nowrap ${
+                              isReg
+                                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 cursor-default'
+                                : 'bg-amber-600 hover:bg-amber-500 text-white'
+                            }`}
+                          >
+                            <BookPlus className="w-3.5 h-3.5" />
+                            <span>{isReg ? 'Registered' : 'Register Unit'}</span>
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          disabled={isReg}
-                          onClick={() => handleRegisterUnit(course.id)}
-                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg whitespace-nowrap ${
-                            isReg
-                              ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 cursor-default'
-                              : 'bg-amber-600 hover:bg-amber-500 text-white'
-                          }`}
-                        >
-                          <BookPlus className="w-3.5 h-3.5" />
-                          <span>{isReg ? 'Registered' : 'Register Unit'}</span>
-                        </button>
-                      </div>
-                    );
-                  })}
+                      );
+                    });
+                  })()}
                 </div>
               </div>
 
@@ -711,6 +1337,7 @@ export function StudentsAcademicsModule({ mode, data }: StudentsAcademicsModuleP
                 </table>
               </div>
             </div>
+            </div>
           )}
 
           {myStudent && (
@@ -736,6 +1363,23 @@ export function StudentsAcademicsModule({ mode, data }: StudentsAcademicsModuleP
             />
           )}
         </div>
+      )}
+
+      {/* TAB: Interactive Examination Timetable */}
+      {tab === 'timetable' && (
+        <ExamTimetablePanel
+          courses={data.courses}
+          registrations={data.registrations}
+          examTimetables={data.examTimetables}
+          onlineAssessments={data.onlineAssessments}
+          isStaff={isStaff}
+          effectiveRole={effectiveRole}
+          academicYear={academicYear}
+          semesterName={semesterName}
+          firebaseUser={firebaseUser}
+          profile={profile}
+          myStudent={myStudent}
+        />
       )}
 
       {/* TAB: Grade Trend & Subject Focus Analysis */}
@@ -1016,6 +1660,12 @@ export function StudentsAcademicsModule({ mode, data }: StudentsAcademicsModuleP
           </div>
         </div>
       )}
+
+      <BulkStudentImportModal
+        open={showBulkModal}
+        data={data}
+        onClose={() => setShowBulkModal(false)}
+      />
     </div>
   );
 }

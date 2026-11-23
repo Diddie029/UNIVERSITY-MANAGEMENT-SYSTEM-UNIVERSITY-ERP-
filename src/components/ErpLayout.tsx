@@ -47,7 +47,7 @@ export function ErpLayout({
   unreadResourcesAlerts = 0,
   children,
 }: ErpLayoutProps) {
-  const { firebaseUser, profile, effectiveRole, previewRole, setPreviewRole, signOut } = useAuth();
+  const { firebaseUser, profile, actualRole, effectiveRole, previewRole, setPreviewRole, signOut } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -69,7 +69,7 @@ export function ErpLayout({
     label: getLabel(item),
   }));
   const currentTitle = visibleNav.find((i) => i.id === activeSection)?.label ?? 'Workspace';
-  const isSuperAdmin = profile?.role === 'super_admin';
+  const isSuperAdmin = actualRole === 'super_admin';
 
   const sidebarContent = (
     <div className="flex flex-col h-full">
@@ -83,7 +83,7 @@ export function ErpLayout({
             <Building2 className="w-4 h-4 text-amber-500" />
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-bold text-slate-900 dark:text-white truncate font-display">PUST ERP</p>
+            <p className="text-sm font-bold text-slate-900 dark:text-white truncate font-display">EDUVANCE ERP</p>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">University Ecosystem</p>
           </div>
         </button>
@@ -208,13 +208,23 @@ export function ErpLayout({
               <Menu className="w-4 h-4" />
             </button>
             <div className="flex items-center gap-2 text-sm truncate">
-              <span className="text-slate-500 dark:text-slate-400 hidden sm:inline">PUST ERP</span>
+              <span className="text-slate-500 dark:text-slate-400 hidden sm:inline">EDUVANCE ERP</span>
               <span className="text-slate-400 hidden sm:inline">/</span>
               <h1 className="font-semibold text-slate-900 dark:text-white truncate">{currentTitle}</h1>
             </div>
           </div>
 
           <div className="flex items-center gap-3 shrink-0">
+            {isSuperAdmin && previewRole && (
+              <button
+                type="button"
+                onClick={() => setPreviewRole(null)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-600 hover:bg-amber-500 text-white transition-colors whitespace-nowrap"
+              >
+                <Shield className="w-3.5 h-3.5" />
+                <span>Restore Super Admin ({ROLE_LABELS[previewRole]} Preview)</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={toggleTheme}

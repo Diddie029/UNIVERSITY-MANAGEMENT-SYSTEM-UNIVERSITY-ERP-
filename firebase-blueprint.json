@@ -18,6 +18,8 @@
         "inviteId": { "type": "string", "maxLength": 128 },
         "bindingId": { "type": "string", "maxLength": 128 },
         "status": { "type": "string", "enum": ["active", "suspended"] },
+        "accountActivated": { "type": "boolean" },
+        "lastActiveAt": { "type": "string", "format": "date-time" },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
@@ -103,10 +105,13 @@
         "creditUnits": { "type": "number" },
         "prerequisiteCode": { "type": "string", "maxLength": 24 },
         "lecturerUid": { "type": "string", "maxLength": 128 },
+        "lecturerEmployeeId": { "type": "string", "maxLength": 128 },
+        "lecturerStaffNo": { "type": "string", "maxLength": 64 },
         "lecturerName": { "type": "string", "maxLength": 120 },
         "schedule": { "type": "string", "maxLength": 160 },
         "room": { "type": "string", "maxLength": 64 },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["code", "title", "programmeId", "departmentId", "yearLevel", "semesterNumber", "creditUnits", "createdAt"]
     },
@@ -193,6 +198,9 @@
         "clearanceLibrary": { "type": "boolean" },
         "clearanceDepartment": { "type": "boolean" },
         "clearanceExams": { "type": "boolean" },
+        "accountActivated": { "type": "boolean" },
+        "activatedAt": { "type": "string", "format": "date-time" },
+        "bulkImported": { "type": "boolean" },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
@@ -482,6 +490,8 @@
         "fullName": { "type": "string", "minLength": 2, "maxLength": 160 },
         "verificationHash": { "type": "string", "minLength": 8, "maxLength": 128 },
         "boundUid": { "type": "string", "maxLength": 128 },
+        "activated": { "type": "boolean" },
+        "activatedAt": { "type": "string", "format": "date-time" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["code", "targetType", "targetId", "role", "fullName", "verificationHash", "createdAt"]
@@ -552,7 +562,7 @@
         "courseTitle": { "type": "string", "minLength": 2, "maxLength": 180 },
         "title": { "type": "string", "minLength": 2, "maxLength": 200 },
         "topicSummary": { "type": "string", "maxLength": 1000 },
-        "platform": { "type": "string", "enum": ["PUST Virtual Room", "Google Meet", "Zoom", "Microsoft Teams"] },
+        "platform": { "type": "string", "enum": ["EDUVANCE Virtual Room", "PUST Virtual Room", "Google Meet", "Zoom", "Microsoft Teams"] },
         "meetingUrl": { "type": "string", "maxLength": 500 },
         "passcode": { "type": "string", "maxLength": 64 },
         "scheduledStart": { "type": "string", "minLength": 4, "maxLength": 64 },
@@ -560,10 +570,56 @@
         "status": { "type": "string", "enum": ["scheduled", "live", "completed"] },
         "lecturerUid": { "type": "string", "minLength": 1, "maxLength": 128 },
         "lecturerName": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "qrToken": { "type": "string", "maxLength": 64 },
+        "qrExpiresAt": { "type": "string", "maxLength": 64 },
+        "qrCreatedAt": { "type": "string", "maxLength": 64 },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["courseId", "courseCode", "courseTitle", "title", "platform", "scheduledStart", "durationMinutes", "status", "lecturerUid", "lecturerName", "createdAt", "updatedAt"]
+    },
+    "OnlineClassAttendance": {
+      "title": "OnlineClassAttendance",
+      "description": "Verified QR-code or check-in attendance record for an online class session.",
+      "type": "object",
+      "properties": {
+        "classId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "courseId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "courseCode": { "type": "string", "minLength": 2, "maxLength": 24 },
+        "studentUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "studentId": { "type": "string", "maxLength": 128 },
+        "admissionNo": { "type": "string", "maxLength": 64 },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "tokenUsed": { "type": "string", "minLength": 2, "maxLength": 64 },
+        "method": { "type": "string", "enum": ["qr_scan", "manual_checkin"] },
+        "checkedInAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["classId", "courseId", "courseCode", "studentUid", "displayName", "tokenUsed", "method", "checkedInAt"]
+    },
+    "ExamTimetable": {
+      "title": "ExamTimetable",
+      "description": "Official university examination timetable entry for end-of-semester, practical, CAT, or online exams.",
+      "type": "object",
+      "properties": {
+        "courseId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "courseCode": { "type": "string", "minLength": 2, "maxLength": 24 },
+        "courseTitle": { "type": "string", "minLength": 2, "maxLength": 180 },
+        "examType": { "type": "string", "enum": ["End-of-Semester Exam", "CAT", "Practical Exam", "Online Exam"] },
+        "examDate": { "type": "string", "minLength": 4, "maxLength": 32 },
+        "startTime": { "type": "string", "minLength": 3, "maxLength": 16 },
+        "durationMinutes": { "type": "number" },
+        "venue": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "invigilator": { "type": "string", "maxLength": 120 },
+        "instructions": { "type": "string", "maxLength": 600 },
+        "academicYear": { "type": "string", "minLength": 4, "maxLength": 32 },
+        "semesterName": { "type": "string", "minLength": 2, "maxLength": 64 },
+        "status": { "type": "string", "enum": ["scheduled", "postponed", "completed"] },
+        "createdByUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdByName": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["courseId", "courseCode", "courseTitle", "examType", "examDate", "startTime", "durationMinutes", "venue", "academicYear", "semesterName", "status", "createdByUid", "createdByName", "createdAt", "updatedAt"]
     },
     "ClassMessage": {
       "title": "ClassMessage",
@@ -910,6 +966,14 @@
     "/online_classes/{classId}/messages/{messageId}": {
       "schema": { "$ref": "#/entities/ClassMessage" },
       "description": "Live classroom chat and student attendance check-ins."
+    },
+    "/online_classes/{classId}/attendance/{attendeeUid}": {
+      "schema": { "$ref": "#/entities/OnlineClassAttendance" },
+      "description": "QR-verified student attendance participation records per online class session."
+    },
+    "/exam_timetables/{examId}": {
+      "schema": { "$ref": "#/entities/ExamTimetable" },
+      "description": "Official university examination timetable schedule."
     },
     "/online_assessments/{assessmentId}": {
       "schema": { "$ref": "#/entities/OnlineAssessment" },

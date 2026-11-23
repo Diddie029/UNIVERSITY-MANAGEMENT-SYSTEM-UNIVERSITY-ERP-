@@ -141,11 +141,11 @@ export function generateAdmissionNumber(progCode: string, sequence: number): str
   const year = new Date().getFullYear();
   const cleanCode = progCode.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 10) || 'GEN';
   const padded = String(sequence).padStart(4, '0');
-  return `PUST/${cleanCode}/${year}/${padded}`;
+  return `EDU/${cleanCode}/${year}/${padded}`;
 }
 
 export function generateReceiptNumber(): string {
   const year = new Date().getFullYear();
   const token = Math.floor(100000 + Math.random() * 900000);
-  return `PUST-RCT-${year}-${token}`;
+  return `EDU-RCT-${year}-${token}`;
 }

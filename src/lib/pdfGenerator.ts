@@ -17,7 +17,7 @@ function addInstitutionalHeader(doc: jsPDF, documentTitle: string, referenceNo: 
   doc.setTextColor(245, 158, 11);
   doc.setFontSize(15);
   doc.setFont('helvetica', 'bold');
-  doc.text('PWANI UNIVERSITY OF SCIENCE & TECHNOLOGY', 14, 14);
+  doc.text('EDUVANCE ERP — UNIVERSITY MANAGEMENT ECOSYSTEM', 14, 14);
   doc.setTextColor(226, 232, 240);
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
@@ -44,7 +44,7 @@ export function generateAdmissionLetterPDF(app: AdmissionApplication) {
     `Date: ${new Date().toLocaleDateString('en-KE', { dateStyle: 'long' })}`,
     `Dear ${app.fullName},`,
     '',
-    'Following your application to Pwani University of Science & Technology (PUST), the',
+    'Following your application to EDUVANCE ERP University Portal, the',
     'University Senate Admissions Board is pleased to offer you provisional admission into:',
     '',
   ];
@@ -78,7 +78,7 @@ export function generateAdmissionLetterPDF(app: AdmissionApplication) {
   );
   doc.setFont('helvetica', 'bold');
   doc.text('Prof. J. Mwangi — Academic Registrar', 14, finalY + 28);
-  doc.save(`PUST_Admission_Letter_${admNo.replace(/\//g, '_')}.pdf`);
+  doc.save(`EDUVANCE_Admission_Letter_${admNo.replace(/\//g, '_')}.pdf`);
 }
 
 export function generateReceiptPDF(receipt: Receipt) {
@@ -105,8 +105,8 @@ export function generateReceiptPDF(receipt: Receipt) {
   const finalY = (doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY ?? 130;
   doc.setFontSize(9);
   doc.setTextColor(71, 85, 105);
-  doc.text('This is a verified official receipt from PUST Finance Office. Retain for examination & clearance.', 14, finalY + 12);
-  doc.save(`PUST_Receipt_${receipt.receiptNumber}.pdf`);
+  doc.text('This is a verified official receipt from EDUVANCE Finance Office. Retain for examination & clearance.', 14, finalY + 12);
+  doc.save(`EDUVANCE_Receipt_${receipt.receiptNumber}.pdf`);
 }
 
 export function generateFeeStatementPDF(
@@ -149,7 +149,7 @@ export function generateFeeStatementPDF(
     headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255] },
   });
 
-  doc.save(`PUST_Fee_Statement_${student.admissionNo.replace(/\//g, '_')}.pdf`);
+  doc.save(`EDUVANCE_Fee_Statement_${student.admissionNo.replace(/\//g, '_')}.pdf`);
 }
 
 export function generateTranscriptPDF(student: Student, marks: ExamMark[]) {
@@ -187,7 +187,7 @@ export function generateTranscriptPDF(student: Student, marks: ExamMark[]) {
   const finalY = (doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY ?? 120;
   doc.setFont('helvetica', 'bold');
   doc.text(`Cumulative GPA: ${gpa} / 4.00   |   Total Credits Earned: ${totalUnits}`, 14, finalY + 12);
-  doc.save(`PUST_Transcript_${student.admissionNo.replace(/\//g, '_')}.pdf`);
+  doc.save(`EDUVANCE_Transcript_${student.admissionNo.replace(/\//g, '_')}.pdf`);
 }
 
 export function generatePayslipPDF(payslip: Payslip) {
@@ -216,7 +216,7 @@ export function generatePayslipPDF(payslip: Payslip) {
     headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255] },
   });
 
-  doc.save(`PUST_Payslip_${payslip.staffNo}_${payslip.monthLabel.replace(/\s+/g, '_')}.pdf`);
+  doc.save(`EDUVANCE_Payslip_${payslip.staffNo}_${payslip.monthLabel.replace(/\s+/g, '_')}.pdf`);
 }
 
 export function exportToCSV(filename: string, headers: string[], rows: (string | number | boolean)[][]) {

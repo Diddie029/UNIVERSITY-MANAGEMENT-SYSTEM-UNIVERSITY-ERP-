@@ -335,7 +335,7 @@ export function HrPayrollModule({ data }: HrPayrollModuleProps) {
                   type="button"
                   onClick={() =>
                     exportToCSV(
-                      `PUST_Bank_Schedule_${activeRun.monthLabel.replace(/\s+/g, '_')}.csv`,
+                      `EDUVANCE_Bank_Schedule_${activeRun.monthLabel.replace(/\s+/g, '_')}.csv`,
                       ['Staff No', 'Employee Name', 'Bank', 'Account', 'Gross Pay', 'NSSF', 'SHIF', 'Housing Levy', 'PAYE', 'Net Pay'],
                       payslips.map((s) => [
                         s.staffNo,
@@ -486,7 +486,7 @@ export function HrPayrollModule({ data }: HrPayrollModuleProps) {
               onSubmit={handleCreateEmployee}
               className="border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-[#111827] p-5 grid grid-cols-1 sm:grid-cols-3 gap-4"
             >
-              <input type="text" required placeholder="Staff No (PUST-STF-0301)" value={staffNo} onChange={(e) => setStaffNo(e.target.value)} className="px-3 py-2 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900" />
+              <input type="text" required placeholder="Staff No (EDU-STF-0301)" value={staffNo} onChange={(e) => setStaffNo(e.target.value)} className="px-3 py-2 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900" />
               <input type="text" required placeholder="Full Name" value={empName} onChange={(e) => setEmpName(e.target.value)} className="px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900" />
               <input type="email" required placeholder="Official Email" value={empEmail} onChange={(e) => setEmpEmail(e.target.value)} className="px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900" />
               <select value={empDeptId || data.departments[0]?.id || ''} onChange={(e) => setEmpDeptId(e.target.value)} className="px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900">

@@ -1,5 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import { Briefcase, ExternalLink, GraduationCap, KeyRound, Mail, ShieldCheck, X } from 'lucide-react';
+import {
+  Briefcase,
+  CheckCircle2,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  GraduationCap,
+  KeyRound,
+  Mail,
+  ShieldCheck,
+  X,
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from './Toast';
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -11,14 +22,16 @@ interface SignInModalProps {
   onSuccess?: () => void;
 }
 
-export function SignInModal({ open, initialTab = 'google', onClose, onSuccess }: SignInModalProps) {
-  const { signInWithGoogle, signInWithEmailPassword, signInWithPortalCode } = useAuth();
+export function SignInModal({ open, initialTab = 'student', onClose, onSuccess }: SignInModalProps) {
+  const { firebaseUser, signInWithGoogle, signInWithEmailPassword, signInWithPortalCode } = useAuth();
   const { showToast } = useToast();
 
   const [tab, setTab] = useState<'google' | 'student' | 'staff' | 'email'>(initialTab);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [emailProviderDisabled, setEmailProviderDisabled] = useState(false);
+  const [showStudentSecret, setShowStudentSecret] = useState(false);
+  const [showStaffSecret, setShowStaffSecret] = useState(false);
 
   // Student Reg No login state
   const [regNo, setRegNo] = useState('');
@@ -75,8 +88,10 @@ export function SignInModal({ open, initialTab = 'google', onClose, onSuccess }:
       showToast(
         res.keptAdmin
           ? `Verified student record (${res.fullName}). Super Admin session switched to Student Preview.`
+          : res.needsActivation
+          ? `Welcome, ${res.fullName}. Your new account requires activation before entering the portal.`
           : `Welcome, ${res.fullName}. Student portal linked.`,
-        'success'
+        res.needsActivation ? 'info' : 'success'
       );
       onClose();
       onSuccess?.();
@@ -143,10 +158,10 @@ export function SignInModal({ open, initialTab = 'google', onClose, onSuccess }:
         <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-4">
           <div>
             <h2 id="signin-modal-title" className="text-base font-bold text-slate-900 dark:text-white">
-              PUST University Portal Sign In
+              EDUVANCE ERP Portal Sign In
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Choose your institutional sign-in method
+              Sign in with your Student Registration Number, Staff ID, Google, or Email
             </p>
           </div>
           <button
@@ -159,13 +174,13 @@ export function SignInModal({ open, initialTab = 'google', onClose, onSuccess }:
           </button>
         </div>
 
-        {/* Method Tabs */}
+        {/* Method Tabs (Student & Staff Registration No prioritized first) */}
         <div className="px-6 pt-4">
           <div className="grid grid-cols-4 gap-1 p-1 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
             {[
-              { id: 'google', label: 'Google', icon: ShieldCheck },
               { id: 'student', label: 'Student No', icon: GraduationCap },
-              { id: 'staff', label: 'Staff No', icon: Briefcase },
+              { id: 'staff', label: 'Staff ID', icon: Briefcase },
+              { id: 'google', label: 'Google', icon: ShieldCheck },
               { id: 'email', label: 'Email', icon: Mail },
             ].map((item) => {
               const Icon = item.icon;
@@ -202,7 +217,7 @@ export function SignInModal({ open, initialTab = 'google', onClose, onSuccess }:
                   <ol className="list-decimal list-inside space-y-1 text-slate-700 dark:text-slate-200">
                     <li>Open Firebase Console Authentication Sign-in providers.</li>
                     <li>Select <strong className="font-semibold">Email/Password</strong>, toggle <strong className="font-semibold">Enable</strong>, and save.</li>
-                    <li>Or sign in immediately using Google, Student No, or Staff No.</li>
+                    <li>Or sign in immediately using Student No, Staff ID, or Google.</li>
                   </ol>
                   <div className="flex flex-wrap items-center gap-2 pt-1">
                     <button
@@ -228,10 +243,157 @@ export function SignInModal({ open, initialTab = 'google', onClose, onSuccess }:
             </div>
           )}
 
+          {tab === 'student' && (
+            <form onSubmit={handleStudentLogin} className="space-y-4">
+              <div className="p-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 text-xs text-slate-600 dark:text-slate-300 leading-relaxed flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                <span>
+                  {firebaseUser
+                    ? `Session active (${firebaseUser.email || firebaseUser.uid.slice(0, 8)}). Enter your Registration Number & National ID to open your student portal.`
+                    : 'Enter your official Student Registration Number and National ID. Your Google account is verified once to bind your student workspace.'}
+                </span>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
+                  Registration / Admission Number
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={regNo}
+                  onChange={(e) => setRegNo(e.target.value)}
+                  placeholder="EDU/BSC-CS/2025/0042 or PUST/BSC-CS/2025/0042"
+                  className="w-full px-3 py-2 text-sm font-mono uppercase rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
+                  National ID / Birth Cert Number
+                </label>
+                <div className="relative">
+                  <input
+                    type={showStudentSecret ? 'text' : 'password'}
+                    required
+                    value={nationalId}
+                    onChange={(e) => setNationalId(e.target.value)}
+                    placeholder="e.g. 38910422"
+                    className="w-full pl-3 pr-10 py-2 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowStudentSecret((v) => !v)}
+                    aria-label={showStudentSecret ? 'Hide National ID' : 'Show National ID'}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                  >
+                    {showStudentSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-sm font-semibold transition-colors disabled:opacity-60"
+              >
+                <KeyRound className="w-4 h-4" />
+                <span>{loading ? 'Verifying Student Record...' : 'Sign In with Registration Number'}</span>
+              </button>
+              <div className="pt-1 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                <span className="font-mono">Demo: EDU/BSC-CS/2025/0042 · ID 38910422</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRegNo('EDU/BSC-CS/2025/0042');
+                    setNationalId('38910422');
+                  }}
+                  className="font-semibold text-amber-600 dark:text-amber-400 hover:underline whitespace-nowrap"
+                >
+                  Fill Demo Student
+                </button>
+              </div>
+            </form>
+          )}
+
+          {tab === 'staff' && (
+            <form onSubmit={handleStaffLogin} className="space-y-4">
+              <div className="p-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 text-xs text-slate-600 dark:text-slate-300 leading-relaxed flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                <span>
+                  {firebaseUser
+                    ? `Session active (${firebaseUser.email || firebaseUser.uid.slice(0, 8)}). Enter your Staff ID & Passcode to enter your department workspace.`
+                    : 'Enter your HR Staff Registration Number and assigned Passcode to access Lecturer, HoD, Finance, Admissions, or HR tools.'}
+                </span>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
+                  Staff Registration Number
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={staffNo}
+                  onChange={(e) => setStaffNo(e.target.value)}
+                  placeholder="EDU-STF-0104 or PUST-STF-0104"
+                  className="w-full px-3 py-2 text-sm font-mono uppercase rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
+                  Staff Verification Passcode
+                </label>
+                <div className="relative">
+                  <input
+                    type={showStaffSecret ? 'text' : 'password'}
+                    required
+                    value={staffCode}
+                    onChange={(e) => setStaffCode(e.target.value)}
+                    placeholder="e.g. STF0104"
+                    className="w-full pl-3 pr-10 py-2 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowStaffSecret((v) => !v)}
+                    aria-label={showStaffSecret ? 'Hide Staff Passcode' : 'Show Staff Passcode'}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                  >
+                    {showStaffSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-sm font-semibold transition-colors disabled:opacity-60"
+              >
+                <KeyRound className="w-4 h-4" />
+                <span>{loading ? 'Verifying Staff Record...' : 'Sign In with Staff Number'}</span>
+              </button>
+              <div className="pt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                <span className="font-mono">Quick fill:</span>
+                {[
+                  { label: 'Lecturer (0104)', code: 'EDU-STF-0104', secret: 'STF0104' },
+                  { label: 'Finance (0119)', code: 'EDU-STF-0119', secret: 'STF0119' },
+                  { label: 'HoD (0205)', code: 'EDU-STF-0205', secret: 'STF0205' },
+                ].map((preset) => (
+                  <button
+                    key={preset.code}
+                    type="button"
+                    onClick={() => {
+                      setStaffNo(preset.code);
+                      setStaffCode(preset.secret);
+                    }}
+                    className="px-2 py-0.5 rounded border border-slate-300 dark:border-slate-700 hover:border-amber-500 text-amber-600 dark:text-amber-400 font-medium whitespace-nowrap"
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </form>
+          )}
+
           {tab === 'google' && (
             <div className="space-y-4">
               <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-                Sign in directly with your verified Google account. Super Administrators, pre-invited staff, and prospective applicants are routed automatically to their authorized workspace.
+                Sign in directly with your verified Google account. Super Administrators, pre-invited staff, and prospective applicants are routed automatically to their authorized EDUVANCE ERP workspace.
               </p>
               <button
                 type="button"
@@ -242,96 +404,6 @@ export function SignInModal({ open, initialTab = 'google', onClose, onSuccess }:
                 {loading ? 'Authenticating...' : 'Continue with Google'}
               </button>
             </div>
-          )}
-
-          {tab === 'student' && (
-            <form onSubmit={handleStudentLogin} className="space-y-4">
-              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                Enter your official Registration / Admission Number and National ID to verify your student profile and link your portal session.
-              </p>
-              <div>
-                <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
-                  Registration / Admission Number
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={regNo}
-                  onChange={(e) => setRegNo(e.target.value)}
-                  placeholder="PUST/BSC-CS/2025/0042"
-                  className="w-full px-3 py-2 text-sm font-mono uppercase rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
-                  National ID / Birth Cert Number
-                </label>
-                <input
-                  type="password"
-                  required
-                  value={nationalId}
-                  onChange={(e) => setNationalId(e.target.value)}
-                  placeholder="e.g. 38910422"
-                  className="w-full px-3 py-2 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100"
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-sm font-semibold transition-colors disabled:opacity-60"
-              >
-                <KeyRound className="w-4 h-4" />
-                <span>{loading ? 'Verifying Student Record...' : 'Verify & Sign In as Student'}</span>
-              </button>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
-                Seeded demo student: PUST/BSC-CS/2025/0042 · ID: 38910422
-              </p>
-            </form>
-          )}
-
-          {tab === 'staff' && (
-            <form onSubmit={handleStaffLogin} className="space-y-4">
-              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                Enter your HR Staff Number and assigned Staff Passcode to activate your Lecturer, HoD, Finance, or HR workspace.
-              </p>
-              <div>
-                <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
-                  Staff Number
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={staffNo}
-                  onChange={(e) => setStaffNo(e.target.value)}
-                  placeholder="PUST-STF-0104"
-                  className="w-full px-3 py-2 text-sm font-mono uppercase rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
-                  Staff Verification Passcode
-                </label>
-                <input
-                  type="password"
-                  required
-                  value={staffCode}
-                  onChange={(e) => setStaffCode(e.target.value)}
-                  placeholder="e.g. STF0104"
-                  className="w-full px-3 py-2 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100"
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-sm font-semibold transition-colors disabled:opacity-60"
-              >
-                <KeyRound className="w-4 h-4" />
-                <span>{loading ? 'Verifying Staff Record...' : 'Verify & Sign In as Staff'}</span>
-              </button>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
-                Seeded staff: PUST-STF-0104 (Lecturer · STF0104) · PUST-STF-0119 (Finance · STF0119)
-              </p>
-            </form>
           )}
 
           {tab === 'email' && (
@@ -372,7 +444,7 @@ export function SignInModal({ open, initialTab = 'google', onClose, onSuccess }:
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="name@pust.ac.ke"
+                  placeholder="name@eduvance.ac.ke"
                   className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100"
                 />
               </div>

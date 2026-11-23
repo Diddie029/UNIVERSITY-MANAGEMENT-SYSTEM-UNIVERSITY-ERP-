@@ -1,4 +1,5 @@
 import express from 'express';
+import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
@@ -11,21 +12,127 @@ const __dirname = path.dirname(__filename);
 const app = express();
 app.use(express.json({ limit: '1mb' }));
 
-// Security headers
-app.use((_req, res, next) => {
+interface SystemLogEntry {
+  id: string;
+  timestamp: string;
+  level: 'INFO' | 'WARN' | 'ERROR';
+  source: 'HTTP' | 'API' | 'SYSTEM';
+  method?: string;
+  path?: string;
+  statusCode?: number;
+  durationMs?: number;
+  message: string;
+}
+
+const MAX_SYSTEM_LOGS = 500;
+const startedAt = new Date().toISOString();
+const systemLogs: SystemLogEntry[] = [];
+let totalRequests = 0;
+let errorCount = 0;
+let totalDurationMs = 0;
+
+function pushSystemLog(entry: Omit<SystemLogEntry, 'id' | 'timestamp'>) {
+  systemLogs.push({
+    id: `syslog_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    timestamp: new Date().toISOString(),
+    ...entry,
+  });
+  if (systemLogs.length > MAX_SYSTEM_LOGS) {
+    systemLogs.splice(0, systemLogs.length - MAX_SYSTEM_LOGS);
+  }
+}
+
+pushSystemLog({
+  level: 'INFO',
+  source: 'SYSTEM',
+  message: 'EDUVANCE ERP Express runtime initialized and telemetry buffer ready.',
+});
+
+function buildServerMetrics() {
+  const mem = process.memoryUsage();
+  const load = os.loadavg();
+  return {
+    status: 'ok',
+    service: 'eduvance-erp',
+    timestamp: new Date().toISOString(),
+    startedAt,
+    uptimeSeconds: Math.round(process.uptime()),
+    memoryMb: {
+      rss: Math.round((mem.rss / 1024 / 1024) * 10) / 10,
+      heapUsed: Math.round((mem.heapUsed / 1024 / 1024) * 10) / 10,
+      heapTotal: Math.round((mem.heapTotal / 1024 / 1024) * 10) / 10,
+      external: Math.round((mem.external / 1024 / 1024) * 10) / 10,
+    },
+    cpuLoad1m: Math.round((load[0] ?? 0) * 100) / 100,
+    cpuLoad5m: Math.round((load[1] ?? 0) * 100) / 100,
+    cpuCount: os.cpus().length,
+    nodeVersion: process.version,
+    totalRequests,
+    errorCount,
+    avgResponseMs: totalRequests > 0 ? Math.round((totalDurationMs / totalRequests) * 10) / 10 : 0,
+  };
+}
+
+// Security headers & sanitized API/error telemetry middleware
+app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+
+  const reqStart = performance.now();
+  const cleanPath = (req.path || '/').slice(0, 120);
+
+  res.on('finish', () => {
+    const durationMs = Math.round((performance.now() - reqStart) * 10) / 10;
+    const isApi = cleanPath.startsWith('/api');
+    const isErr = res.statusCode >= 400;
+
+    if (isApi) {
+      totalRequests += 1;
+      totalDurationMs += durationMs;
+    }
+    if (isErr) {
+      errorCount += 1;
+    }
+
+    if (isApi || isErr) {
+      pushSystemLog({
+        level: res.statusCode >= 500 ? 'ERROR' : res.statusCode >= 400 ? 'WARN' : 'INFO',
+        source: isApi ? 'API' : 'HTTP',
+        method: req.method,
+        path: cleanPath,
+        statusCode: res.statusCode,
+        durationMs,
+        message: `${req.method} ${cleanPath} -> ${res.statusCode} (${durationMs} ms)`,
+      });
+    }
+  });
+
   next();
 });
 
-// Kenyan Statutory Payroll Reference & Calculation Endpoint
+// System Health, Telemetry & Logs Endpoints
 app.get('/api/health', (_req, res) => {
+  res.json(buildServerMetrics());
+});
+
+app.get('/api/system/logs', (_req, res) => {
   res.json({
-    status: 'ok',
-    service: 'pust-university-erp',
-    timestamp: new Date().toISOString(),
+    logs: [...systemLogs].reverse(),
+    serverMetrics: buildServerMetrics(),
   });
+});
+
+app.post('/api/system/probe', (_req, res) => {
+  pushSystemLog({
+    level: 'INFO',
+    source: 'SYSTEM',
+    method: 'POST',
+    path: '/api/system/probe',
+    statusCode: 200,
+    message: 'Super Admin ran manual server & database health diagnostic probe.',
+  });
+  res.json(buildServerMetrics());
 });
 
 app.post('/api/payroll/preview', (req, res) => {
@@ -80,7 +187,7 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`PUST University ERP running on http://0.0.0.0:${PORT}`);
+    console.log(`EDUVANCE ERP running on http://0.0.0.0:${PORT}`);
   });
 }
 

@@ -104,9 +104,9 @@ export function StudyGroupsPanel({
   const [savingNotes, setSavingNotes] = useState(false);
 
   const actorDisplayName = useMemo(() => {
-    const raw = myStudent?.fullName || profile?.displayName || 'PUST Member';
+    const raw = myStudent?.fullName || profile?.displayName || 'EDUVANCE Member';
     const trimmed = clampStr(raw, 160);
-    return trimmed.length >= 2 ? trimmed : 'PUST Member';
+    return trimmed.length >= 2 ? trimmed : 'EDUVANCE Member';
   }, [myStudent?.fullName, profile?.displayName]);
 
   const actorAdmissionNo = myStudent?.admissionNo || '';

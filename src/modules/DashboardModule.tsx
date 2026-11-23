@@ -172,7 +172,7 @@ export function DashboardModule({ data, onNavigate }: DashboardModuleProps) {
               type="button"
               onClick={() =>
                 exportToCSV(
-                  'PUST_Financial_Summary.csv',
+                  'EDUVANCE_Financial_Summary.csv',
                   ['Admission No', 'Student Name', 'Total Billed', 'Verified Paid', 'Scholarships', 'Balance', 'Cleared'],
                   data.studentAccounts.map((a) => [
                     a.admissionNo,

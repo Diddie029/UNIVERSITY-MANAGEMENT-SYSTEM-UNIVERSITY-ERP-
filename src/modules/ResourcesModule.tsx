@@ -25,6 +25,7 @@ import {
   FolderUp,
   MonitorPlay,
   Plus,
+  QrCode,
   Send,
   Trash2,
   UserCheck,
@@ -34,6 +35,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
+import { ClassAttendanceQrModal } from '../components/ClassAttendanceQrModal';
 import { ExamScheduleCalendar } from '../components/ExamScheduleCalendar';
 import { StudyGroupsPanel } from '../components/StudyGroupsPanel';
 import { ValidatedFileUpload } from '../components/ValidatedFileUpload';
@@ -163,6 +165,8 @@ export function ResourcesModule({ data }: ResourcesModuleProps) {
   // Readers / Modals State
   const [readingResource, setReadingResource] = useState<CourseResource | null>(null);
   const [activeClassRoom, setActiveClassRoom] = useState<OnlineClass | null>(null);
+  const [qrModalOpen, setQrModalOpen] = useState(false);
+  const [qrTargetClass, setQrTargetClass] = useState<OnlineClass | null>(null);
   const [classMessages, setClassMessages] = useState<ClassMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
 
@@ -184,7 +188,7 @@ export function ResourcesModule({ data }: ResourcesModuleProps) {
   const [clsCourseId, setClsCourseId] = useState('');
   const [clsTitle, setClsTitle] = useState('');
   const [clsTopicSummary, setClsTopicSummary] = useState('');
-  const [clsPlatform, setClsPlatform] = useState<OnlineClass['platform']>('PUST Virtual Room');
+  const [clsPlatform, setClsPlatform] = useState<OnlineClass['platform']>('EDUVANCE Virtual Room');
   const [clsMeetingUrl, setClsMeetingUrl] = useState('');
   const [clsPasscode, setClsPasscode] = useState('');
   const [clsStart, setClsStart] = useState('');
@@ -1533,6 +1537,20 @@ export function ResourcesModule({ data }: ResourcesModuleProps) {
             </button>
           )}
 
+          {!isAcademicStaff && subTab === 'classes' && (
+            <button
+              type="button"
+              onClick={() => {
+                setQrTargetClass(null);
+                setQrModalOpen(true);
+              }}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white whitespace-nowrap"
+            >
+              <QrCode className="w-3.5 h-3.5" />
+              <span>Scan Attendance QR</span>
+            </button>
+          )}
+
           {isAcademicStaff && subTab !== 'study_groups' && (
             <>
               {subTab === 'materials' && (
@@ -1895,7 +1913,7 @@ export function ResourcesModule({ data }: ResourcesModuleProps) {
                     onChange={(e) => setClsPlatform(e.target.value as OnlineClass['platform'])}
                     className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
                   >
-                    <option value="PUST Virtual Room">PUST Virtual Room (Built-In)</option>
+                    <option value="EDUVANCE Virtual Room">EDUVANCE Virtual Room (Built-In)</option>
                     <option value="Google Meet">Google Meet</option>
                     <option value="Zoom">Zoom</option>
                     <option value="Microsoft Teams">Microsoft Teams</option>
@@ -1950,7 +1968,7 @@ export function ResourcesModule({ data }: ResourcesModuleProps) {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
-                    External Join Link (Optional if using PUST Virtual Room)
+                    External Join Link (Optional if using EDUVANCE Virtual Room)
                   </label>
                   <input
                     type="url"
@@ -2056,6 +2074,23 @@ export function ResourcesModule({ data }: ResourcesModuleProps) {
                         <MonitorPlay className="w-3.5 h-3.5" />
                         <span>
                           {cls.status === 'live' ? 'Join Live Classroom' : 'Open Virtual Room'}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setQrTargetClass(cls);
+                          setQrModalOpen(true);
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 hover:border-amber-500 text-slate-800 dark:text-slate-100"
+                      >
+                        <QrCode className="w-3.5 h-3.5 text-amber-500" />
+                        <span>
+                          {isAcademicStaff
+                            ? cls.qrToken
+                              ? 'Attendance QR (Active)'
+                              : 'Generate QR'
+                            : 'Scan QR'}
                         </span>
                       </button>
                       {cls.meetingUrl && (
@@ -2875,6 +2910,17 @@ export function ResourcesModule({ data }: ResourcesModuleProps) {
                 </h3>
               </div>
               <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQrTargetClass(activeClassRoom);
+                    setQrModalOpen(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 hover:border-amber-500 text-slate-800 dark:text-slate-100"
+                >
+                  <QrCode className="w-3.5 h-3.5 text-amber-500" />
+                  <span>{isAcademicStaff ? 'Attendance QR' : 'Scan QR'}</span>
+                </button>
                 {!isAcademicStaff && (
                   <button
                     type="button"
@@ -3554,6 +3600,23 @@ export function ResourcesModule({ data }: ResourcesModuleProps) {
           </div>
         </div>
       )}
+
+      {/* ===================================================================== */}
+      {/* MODAL: QR ATTENDANCE GENERATOR & SCANNER                              */}
+      {/* ===================================================================== */}
+      <ClassAttendanceQrModal
+        open={qrModalOpen}
+        onlineClass={qrTargetClass}
+        onlineClasses={data.onlineClasses}
+        isAcademicStaff={isAcademicStaff}
+        firebaseUser={firebaseUser}
+        profile={profile}
+        myStudent={myStudent}
+        onClose={() => {
+          setQrModalOpen(false);
+          setQrTargetClass(null);
+        }}
+      />
     </div>
   );
 }

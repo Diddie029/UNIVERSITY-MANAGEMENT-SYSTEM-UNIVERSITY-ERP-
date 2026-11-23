@@ -5,6 +5,7 @@ import { ToastProvider, useToast } from './components/Toast';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { PublicPortal } from './components/PublicPortal';
 import { ErpLayout } from './components/ErpLayout';
+import { StudentActivationGate } from './components/StudentActivationGate';
 import { useErpData } from './hooks/useErpData';
 import { filterNotificationsForStudent, isNotificationRead } from './lib/notifications';
 import { DashboardModule } from './modules/DashboardModule';
@@ -18,14 +19,14 @@ import { ResourcesModule } from './modules/ResourcesModule';
 import { ErpSection, ROLE_NAV_SECTIONS } from './types/erp';
 
 function ErpRouter() {
-  const { firebaseUser, profile, authReady, effectiveRole } = useAuth();
+  const { firebaseUser, profile, authReady, actualRole, effectiveRole } = useAuth();
   const { showToast } = useToast();
   const data = useErpData();
 
   const [viewMode, setViewMode] = useState<'public' | 'erp'>('public');
   const [activeSection, setActiveSection] = useState<ErpSection>('dashboard');
 
-  const isSuperAdmin = profile?.role === 'super_admin';
+  const isSuperAdmin = actualRole === 'super_admin';
 
   const myStudent = useMemo(() => {
     if (effectiveRole !== 'student') return undefined;
@@ -109,13 +110,17 @@ function ErpRouter() {
   if (!authReady) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-[#0B1120] text-slate-600 dark:text-slate-300 text-sm">
-        Initializing PUST University ERP session...
+        Initializing EDUVANCE ERP session...
       </div>
     );
   }
 
   if (!firebaseUser || viewMode === 'public') {
     return <PublicPortal data={data} onEnterWorkspace={() => setViewMode('erp')} />;
+  }
+
+  if (effectiveRole === 'student' && !isSuperAdmin && myStudent && myStudent.accountActivated === false) {
+    return <StudentActivationGate student={myStudent} data={data} />;
   }
 
   return (

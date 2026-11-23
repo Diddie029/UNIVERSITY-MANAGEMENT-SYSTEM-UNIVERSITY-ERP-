@@ -626,7 +626,7 @@ export function FinanceModule({ data }: FinanceModuleProps) {
                 type="button"
                 onClick={() =>
                   exportToCSV(
-                    'PUST_Fee_Balances.csv',
+                    'EDUVANCE_Fee_Balances.csv',
                     ['Admission No', 'Student', 'Total Billed', 'Verified Paid', 'Scholarships', 'Balance', 'Cleared'],
                     data.studentAccounts.map((a) => [
                       a.admissionNo,

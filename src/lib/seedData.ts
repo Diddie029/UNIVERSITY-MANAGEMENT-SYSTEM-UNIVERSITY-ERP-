@@ -47,7 +47,7 @@ export async function seedInstitutionalDatabase(actor: ActorContext): Promise<vo
 
   batch1.set(doc(db, 'notices', 'not_001'), {
     title: 'January 2027 Intake & KUCCPS / Self-Sponsored Admissions Open',
-    body: 'Pwani University of Science & Technology invites qualified KCSE candidates (Mean Grade C+ and above for Degree, C- for Diploma) to apply online for Computer Science, Civil Engineering, and Commerce programmes.',
+    body: 'EDUVANCE ERP University Portal invites qualified KCSE candidates (Mean Grade C+ and above for Degree, C- for Diploma) to apply online for Computer Science, Civil Engineering, and Commerce programmes.',
     category: 'Admission Intake',
     audience: 'All',
     pinned: true,
@@ -82,7 +82,7 @@ export async function seedInstitutionalDatabase(actor: ActorContext): Promise<vo
   });
 
   batch1.set(doc(db, 'notices', 'not_004'), {
-    title: 'PUST Coastal Innovation Week & Engineering Showcase 2026',
+    title: 'EDUVANCE Coastal Innovation Week & Engineering Showcase 2026',
     body: 'Join faculty, industry partners, and engineering cohorts at the Mombasa Main Senate Complex for live robotics, civil infrastructure, and fintech demonstrations.',
     category: 'Campus Event',
     audience: 'All',
@@ -377,8 +377,11 @@ export async function seedInstitutionalDatabase(actor: ActorContext): Promise<vo
 
   const studentBindings = [
     { code: 'PUST/BSC-CS/2025/0042', targetId: 'stu_001', fullName: 'Brian Kiprop Mutai', secret: '38910422' },
+    { code: 'EDU/BSC-CS/2025/0042', targetId: 'stu_001', fullName: 'Brian Kiprop Mutai', secret: '38910422' },
     { code: 'PUST/BSC-CS/2025/0118', targetId: 'stu_002', fullName: 'Aisha Mwajuma Hassan', secret: '39451109' },
+    { code: 'EDU/BSC-CS/2025/0118', targetId: 'stu_002', fullName: 'Aisha Mwajuma Hassan', secret: '39451109' },
     { code: 'PUST/BCOM/2025/0075', targetId: 'stu_003', fullName: 'Faith Wambui Karanja', secret: '37890211' },
+    { code: 'EDU/BCOM/2025/0075', targetId: 'stu_003', fullName: 'Faith Wambui Karanja', secret: '37890211' },
   ];
   for (const sb of studentBindings) {
     const bindingId = sanitizeId(sb.code.toUpperCase());
@@ -399,8 +402,11 @@ export async function seedInstitutionalDatabase(actor: ActorContext): Promise<vo
 
   const staffBindings = [
     { code: 'PUST-STF-0104', targetId: 'emp_001', role: 'lecturer', fullName: 'Dr. Samuel Ochieng', secret: 'STF0104' },
+    { code: 'EDU-STF-0104', targetId: 'emp_001', role: 'lecturer', fullName: 'Dr. Samuel Ochieng', secret: 'STF0104' },
     { code: 'PUST-STF-0119', targetId: 'emp_002', role: 'finance', fullName: 'Grace Njeri Waweru', secret: 'STF0119' },
+    { code: 'EDU-STF-0119', targetId: 'emp_002', role: 'finance', fullName: 'Grace Njeri Waweru', secret: 'STF0119' },
     { code: 'PUST-STF-0205', targetId: 'emp_003', role: 'hod', fullName: 'Eng. Peter Njoroge', secret: 'STF0205' },
+    { code: 'EDU-STF-0205', targetId: 'emp_003', role: 'hod', fullName: 'Eng. Peter Njoroge', secret: 'STF0205' },
   ];
   for (const stf of staffBindings) {
     const bindingId = sanitizeId(stf.code.toUpperCase());
@@ -622,7 +628,7 @@ export async function seedInstitutionalDatabase(actor: ActorContext): Promise<vo
       courseTitle: 'Data Structures & Algorithms',
       title: 'Live Seminar: AVL Tree Rotations & Priority Queues',
       topicSummary: 'Interactive walkthrough of LL, RR, LR, and RL tree rotations plus live CAT 1 revision Q&A.',
-      platform: 'PUST Virtual Room',
+      platform: 'EDUVANCE Virtual Room',
       meetingUrl: '',
       passcode: 'CSC201-LIVE',
       scheduledStart: '2026-11-24T10:00',
@@ -785,13 +791,122 @@ export async function seedInstitutionalDatabase(actor: ActorContext): Promise<vo
     });
   }
 
+  const sampleTimetables = [
+    {
+      id: 'exm_001',
+      courseId: 'crs_csc201',
+      courseCode: 'CSC 201',
+      courseTitle: 'Data Structures & Algorithms',
+      examType: 'End-of-Semester Exam',
+      examDate: '2026-12-09',
+      startTime: '09:00',
+      durationMinutes: 120,
+      venue: 'Main Senate Hall A',
+      invigilator: 'Dr. Samuel Ochieng',
+      instructions: 'Carry valid Student ID Card and cleared Exam Card. No programmable calculators.',
+      academicYear: '2026/2027',
+      semesterName: 'Semester I (Sept - Dec)',
+      status: 'scheduled',
+      createdByUid: actor.uid,
+      createdByName: actorName,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: 'exm_002',
+      courseId: 'crs_csc204',
+      courseCode: 'CSC 204',
+      courseTitle: 'Database Systems & SQL Design',
+      examType: 'Practical Exam',
+      examDate: '2026-12-11',
+      startTime: '14:00',
+      durationMinutes: 120,
+      venue: 'TU-Lab 04 & Lab 02',
+      invigilator: 'Dr. Amina Salim',
+      instructions: 'SQL schema normalization and query execution assessment.',
+      academicYear: '2026/2027',
+      semesterName: 'Semester I (Sept - Dec)',
+      status: 'scheduled',
+      createdByUid: actor.uid,
+      createdByName: actorName,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: 'exm_003',
+      courseId: 'crs_csc301',
+      courseCode: 'CSC 301',
+      courseTitle: 'Software Engineering & Cloud Systems',
+      examType: 'End-of-Semester Exam',
+      examDate: '2026-12-14',
+      startTime: '09:00',
+      durationMinutes: 180,
+      venue: 'Innovation Hall 1',
+      invigilator: 'Dr. Samuel Ochieng',
+      instructions: 'Bring architectural drawing instruments and cleared examination card.',
+      academicYear: '2026/2027',
+      semesterName: 'Semester I (Sept - Dec)',
+      status: 'scheduled',
+      createdByUid: actor.uid,
+      createdByName: actorName,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: 'exm_004',
+      courseId: 'crs_bcom202',
+      courseCode: 'BCF 202',
+      courseTitle: 'Corporate Finance & Capital Markets',
+      examType: 'End-of-Semester Exam',
+      examDate: '2026-12-15',
+      startTime: '11:30',
+      durationMinutes: 120,
+      venue: 'Business Wing Auditorium',
+      invigilator: 'Dr. Mercy Wanjiku',
+      instructions: 'Non-programmable financial calculators permitted. Discount tables provided.',
+      academicYear: '2026/2027',
+      semesterName: 'Semester I (Sept - Dec)',
+      status: 'scheduled',
+      createdByUid: actor.uid,
+      createdByName: actorName,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: 'exm_005',
+      courseId: 'crs_eng205',
+      courseCode: 'ECE 205',
+      courseTitle: 'Structural Mechanics & Materials',
+      examType: 'End-of-Semester Exam',
+      examDate: '2026-12-16',
+      startTime: '09:00',
+      durationMinutes: 150,
+      venue: 'Engineering Complex Studio 3',
+      invigilator: 'Eng. Peter Njoroge',
+      instructions: 'Scientific calculators, scale rules, and Steel Tables booklet allowed.',
+      academicYear: '2026/2027',
+      semesterName: 'Semester I (Sept - Dec)',
+      status: 'scheduled',
+      createdByUid: actor.uid,
+      createdByName: actorName,
+      createdAt: now,
+      updatedAt: now,
+    },
+  ];
+  for (const ex of sampleTimetables) {
+    const { id, ...exData } = ex;
+    if (!(await seedDocExists('exam_timetables', id))) {
+      batch6.set(doc(db, 'exam_timetables', id), exData);
+    }
+  }
+
   batch6.set(doc(db, 'audit_logs', makeId('aud')), {
     actorUid: actor.uid,
     actorName,
     actorRole: actor.role,
     action: 'INSTITUTIONAL_SEED_INITIALIZED',
     entityPath: 'system/bootstrap',
-    details: 'Initialized PUST academic structure, Kenyan statutory payroll config, fee structures, sample students, Paybill submissions, staff records, and portal ID bindings.',
+    details: 'Initialized EDUVANCE ERP academic structure, Kenyan statutory payroll config, fee structures, sample students, exam timetables, Paybill submissions, staff records, and portal ID bindings.',
     createdAt: now,
   });
 

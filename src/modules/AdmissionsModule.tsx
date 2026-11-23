@@ -30,6 +30,7 @@ export function AdmissionsModule({ data }: AdmissionsModuleProps) {
   const [nationalId, setNationalId] = useState('');
   const [kcseIndex, setKcseIndex] = useState('');
   const [kcseMeanGrade, setKcseMeanGrade] = useState('B+');
+  const [departmentId, setDepartmentId] = useState('');
   const [programmeId, setProgrammeId] = useState('');
   const [entryCategory, setEntryCategory] = useState<'KUCCPS' | 'Self-Sponsored'>('Self-Sponsored');
   const [intake, setIntake] = useState('January 2027');
@@ -239,17 +240,39 @@ export function AdmissionsModule({ data }: AdmissionsModuleProps) {
             </div>
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">Programme</label>
+            <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">Department</label>
             <select
-              value={programmeId || data.programmes[0]?.id || ''}
+              value={departmentId}
+              onChange={(e) => {
+                const dId = e.target.value;
+                setDepartmentId(dId);
+                const firstProg = data.programmes.find((p) => !dId || p.departmentId === dId);
+                if (firstProg) setProgrammeId(firstProg.id);
+              }}
+              className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
+            >
+              <option value="">All Departments</option>
+              {data.departments.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.code} — {d.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">Course / Programme</label>
+            <select
+              value={programmeId || data.programmes.find((p) => !departmentId || p.departmentId === departmentId)?.id || ''}
               onChange={(e) => setProgrammeId(e.target.value)}
               className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
             >
-              {data.programmes.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.code} — {p.name}
-                </option>
-              ))}
+              {data.programmes
+                .filter((p) => !departmentId || p.departmentId === departmentId)
+                .map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.code} — {p.name} ({p.durationYears} Yrs)
+                  </option>
+                ))}
             </select>
           </div>
           <div>

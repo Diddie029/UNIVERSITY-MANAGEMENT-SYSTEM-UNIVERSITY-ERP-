@@ -40,7 +40,7 @@ const FALLBACK_NOTICES: Notice[] = [
   {
     id: 'n1',
     title: 'January 2027 Intake & KUCCPS / Self-Sponsored Admissions Open',
-    body: 'Pwani University of Science & Technology invites qualified KCSE candidates (Mean Grade C+ and above for Degree, C- for Diploma) to apply online and track admission letter issuance in real time.',
+    body: 'EDUVANCE ERP University Portal invites qualified KCSE candidates (Mean Grade C+ and above for Degree, C- for Diploma) to apply online and track admission letter issuance in real time.',
     category: 'Admission Intake',
     audience: 'All',
     pinned: true,
@@ -84,7 +84,7 @@ export function PublicPortal({ data, onEnterWorkspace }: PublicPortalProps) {
   const [crestImgError, setCrestImgError] = useState(false);
 
   const [signInOpen, setSignInOpen] = useState(false);
-  const [signInTab, setSignInTab] = useState<'google' | 'student' | 'staff' | 'email'>('google');
+  const [signInTab, setSignInTab] = useState<'google' | 'student' | 'staff' | 'email'>('student');
   const [noticeCategoryFilter, setNoticeCategoryFilter] = useState<string>('All');
 
   const [fullName, setFullName] = useState('');
@@ -198,7 +198,7 @@ export function PublicPortal({ data, onEnterWorkspace }: PublicPortalProps) {
             href="#top"
             className="text-lg font-bold tracking-tight text-slate-900 dark:text-slate-50 whitespace-nowrap shrink-0 font-display"
           >
-            Pwani University ERP
+            EDUVANCE ERP
           </a>
 
           <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600 dark:text-slate-300">
@@ -228,7 +228,7 @@ export function PublicPortal({ data, onEnterWorkspace }: PublicPortalProps) {
             ) : (
               <button
                 type="button"
-                onClick={() => openSignIn('google')}
+                onClick={() => openSignIn('student')}
                 className="px-4 py-2 text-xs font-semibold rounded-lg bg-amber-600 hover:bg-amber-500 text-white transition-colors whitespace-nowrap shrink-0"
               >
                 Portal Sign In
@@ -242,7 +242,7 @@ export function PublicPortal({ data, onEnterWorkspace }: PublicPortalProps) {
       <div id="top" className="border-b border-slate-200 dark:border-slate-800/80 bg-slate-100/70 dark:bg-[#111827]">
         <div className="max-w-7xl mx-auto px-6 py-2.5 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-600 dark:text-slate-400">
           <div className="flex flex-wrap items-center gap-2">
-            <span>Pwani University of Science &amp; Technology</span>
+            <span>EDUVANCE University Management Ecosystem</span>
             <span aria-hidden="true">·</span>
             <span>Mombasa Main Campus</span>
             <span aria-hidden="true">·</span>
@@ -287,7 +287,7 @@ export function PublicPortal({ data, onEnterWorkspace }: PublicPortalProps) {
               {!crestImgError ? (
                 <img
                   src="/src/assets/images/pust_university_crest_1795344818405.jpg"
-                  alt="Pwani University of Science & Technology Crest"
+                  alt="EDUVANCE University Crest"
                   referrerPolicy="no-referrer"
                   onError={() => setCrestImgError(true)}
                   className="w-14 h-14 rounded-lg object-cover border border-slate-200 dark:border-slate-700 shrink-0"
@@ -335,7 +335,7 @@ export function PublicPortal({ data, onEnterWorkspace }: PublicPortalProps) {
               {!heroImgError ? (
                 <img
                   src="/src/assets/images/pust_campus_hero_1795344817409.jpg"
-                  alt="Pwani University of Science & Technology Engineering Complex"
+                  alt="EDUVANCE University Engineering Complex"
                   referrerPolicy="no-referrer"
                   onError={() => setHeroImgError(true)}
                   className="w-full h-full object-cover"
@@ -344,7 +344,7 @@ export function PublicPortal({ data, onEnterWorkspace }: PublicPortalProps) {
                 <div className="w-full h-full bg-gradient-to-br from-slate-900 via-slate-800 to-amber-950/40 flex items-center justify-center p-8 text-center">
                   <div className="space-y-2">
                     <Building2 className="w-10 h-10 text-amber-400 mx-auto" />
-                    <p className="text-sm font-medium text-slate-200">Pwani University of Science &amp; Technology</p>
+                    <p className="text-sm font-medium text-slate-200">EDUVANCE ERP University Portal</p>
                   </div>
                 </div>
               )}
@@ -765,7 +765,7 @@ export function PublicPortal({ data, onEnterWorkspace }: PublicPortalProps) {
 
       <footer className="border-t border-slate-200 dark:border-slate-800 py-8 mt-8">
         <div className="max-w-7xl mx-auto px-6 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-500 dark:text-slate-400">
-          <p>Pwani University of Science &amp; Technology (PUST) · Centralized University ERP</p>
+          <p>EDUVANCE ERP · Centralized University Management Ecosystem</p>
           <p>Kenya Data Protection Act Compliant · Role-Enforced Portal</p>
         </div>
       </footer>

@@ -33,6 +33,8 @@ export interface UserProfile {
   inviteId?: string;
   bindingId?: string;
   status: 'active' | 'suspended';
+  accountActivated?: boolean;
+  lastActiveAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -85,10 +87,13 @@ export interface Course {
   creditUnits: number;
   prerequisiteCode?: string;
   lecturerUid?: string;
+  lecturerEmployeeId?: string;
+  lecturerStaffNo?: string;
   lecturerName?: string;
   schedule?: string;
   room?: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface AcademicCalendar {
@@ -173,6 +178,9 @@ export interface Student {
   clearanceLibrary?: boolean;
   clearanceDepartment?: boolean;
   clearanceExams?: boolean;
+  accountActivated?: boolean;
+  activatedAt?: string;
+  bulkImported?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -413,6 +421,8 @@ export interface PortalBinding {
   fullName: string;
   verificationHash: string;
   boundUid?: string;
+  activated?: boolean;
+  activatedAt?: string;
   createdAt: string;
 }
 
@@ -474,7 +484,7 @@ export interface OnlineClass {
   courseTitle: string;
   title: string;
   topicSummary?: string;
-  platform: 'PUST Virtual Room' | 'Google Meet' | 'Zoom' | 'Microsoft Teams';
+  platform: 'EDUVANCE Virtual Room' | 'PUST Virtual Room' | 'Google Meet' | 'Zoom' | 'Microsoft Teams';
   meetingUrl?: string;
   passcode?: string;
   scheduledStart: string;
@@ -482,6 +492,44 @@ export interface OnlineClass {
   status: 'scheduled' | 'live' | 'completed';
   lecturerUid: string;
   lecturerName: string;
+  qrToken?: string;
+  qrExpiresAt?: string;
+  qrCreatedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OnlineClassAttendance {
+  id: string;
+  classId: string;
+  courseId: string;
+  courseCode: string;
+  studentUid: string;
+  studentId?: string;
+  admissionNo?: string;
+  displayName: string;
+  tokenUsed: string;
+  method: 'qr_scan' | 'manual_checkin';
+  checkedInAt: string;
+}
+
+export interface ExamTimetableEntry {
+  id: string;
+  courseId: string;
+  courseCode: string;
+  courseTitle: string;
+  examType: 'End-of-Semester Exam' | 'CAT' | 'Practical Exam' | 'Online Exam';
+  examDate: string;
+  startTime: string;
+  durationMinutes: number;
+  venue: string;
+  invigilator?: string;
+  instructions?: string;
+  academicYear: string;
+  semesterName: string;
+  status: 'scheduled' | 'postponed' | 'completed';
+  createdByUid: string;
+  createdByName: string;
   createdAt: string;
   updatedAt: string;
 }

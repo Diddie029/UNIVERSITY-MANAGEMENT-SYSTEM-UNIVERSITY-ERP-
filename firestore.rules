@@ -98,7 +98,7 @@ service cloud.firestore {
     // Validation Blueprints
     function isValidUserProfile(data) {
       return data.keys().hasAll(['uid', 'displayName', 'role', 'status', 'createdAt', 'updatedAt'])
-        && data.keys().hasOnly(['uid', 'displayName', 'role', 'departmentId', 'programmeId', 'studentId', 'employeeId', 'inviteId', 'bindingId', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'displayName', 'role', 'departmentId', 'programmeId', 'studentId', 'employeeId', 'inviteId', 'bindingId', 'status', 'accountActivated', 'lastActiveAt', 'createdAt', 'updatedAt'])
         && isValidId(data.uid)
         && isStr(data.displayName, 1, 160)
         && data.role in ['super_admin', 'management', 'admissions', 'lecturer', 'hod', 'exam_officer', 'finance', 'hr', 'student', 'applicant']
@@ -109,6 +109,8 @@ service cloud.firestore {
         && (!('employeeId' in data) || isOptStr(data.employeeId, 128))
         && (!('inviteId' in data) || isOptStr(data.inviteId, 128))
         && (!('bindingId' in data) || isOptStr(data.bindingId, 128))
+        && (!('accountActivated' in data) || data.accountActivated is bool)
+        && (!('lastActiveAt' in data) || isOptStr(data.lastActiveAt, 64))
         && data.createdAt is string && data.createdAt.size() <= 64
         && data.updatedAt is string && data.updatedAt.size() <= 64;
     }
@@ -166,20 +168,23 @@ service cloud.firestore {
 
     function isValidCourse(data) {
       return data.keys().hasAll(['code', 'title', 'programmeId', 'departmentId', 'yearLevel', 'semesterNumber', 'creditUnits', 'createdAt'])
-        && data.keys().hasOnly(['code', 'title', 'programmeId', 'departmentId', 'yearLevel', 'semesterNumber', 'creditUnits', 'prerequisiteCode', 'lecturerUid', 'lecturerName', 'schedule', 'room', 'createdAt'])
+        && data.keys().hasOnly(['code', 'title', 'programmeId', 'departmentId', 'yearLevel', 'semesterNumber', 'creditUnits', 'prerequisiteCode', 'lecturerUid', 'lecturerEmployeeId', 'lecturerStaffNo', 'lecturerName', 'schedule', 'room', 'createdAt', 'updatedAt'])
         && isStr(data.code, 2, 24)
         && isStr(data.title, 2, 180)
         && isValidId(data.programmeId)
         && isValidId(data.departmentId)
-        && data.yearLevel is number && data.yearLevel >= 1 && data.yearLevel <= 6
+        && data.yearLevel is number && data.yearLevel >= 1 && data.yearLevel <= 7
         && data.semesterNumber is number && data.semesterNumber >= 1 && data.semesterNumber <= 3
         && data.creditUnits is number && data.creditUnits >= 1 && data.creditUnits <= 12
         && (!('prerequisiteCode' in data) || isOptStr(data.prerequisiteCode, 24))
         && (!('lecturerUid' in data) || isOptStr(data.lecturerUid, 128))
+        && (!('lecturerEmployeeId' in data) || isOptStr(data.lecturerEmployeeId, 128))
+        && (!('lecturerStaffNo' in data) || isOptStr(data.lecturerStaffNo, 64))
         && (!('lecturerName' in data) || isOptStr(data.lecturerName, 120))
         && (!('schedule' in data) || isOptStr(data.schedule, 160))
         && (!('room' in data) || isOptStr(data.room, 64))
-        && isStr(data.createdAt, 4, 64);
+        && isStr(data.createdAt, 4, 64)
+        && (!('updatedAt' in data) || isOptStr(data.updatedAt, 64));
     }
 
     function isValidAcademicCalendar(data) {
@@ -235,11 +240,11 @@ service cloud.firestore {
 
     function isValidStudent(data) {
       return data.keys().hasAll(['admissionNo', 'fullName', 'programmeId', 'yearOfStudy', 'semester', 'category', 'academicStatus', 'createdAt', 'updatedAt'])
-        && data.keys().hasOnly(['uid', 'admissionNo', 'fullName', 'email', 'phone', 'nationalId', 'programmeId', 'programmeName', 'departmentId', 'facultyId', 'yearOfStudy', 'semester', 'category', 'academicStatus', 'clearanceFinance', 'clearanceLibrary', 'clearanceDepartment', 'clearanceExams', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'admissionNo', 'fullName', 'email', 'phone', 'nationalId', 'programmeId', 'programmeName', 'departmentId', 'facultyId', 'yearOfStudy', 'semester', 'category', 'academicStatus', 'clearanceFinance', 'clearanceLibrary', 'clearanceDepartment', 'clearanceExams', 'accountActivated', 'activatedAt', 'bulkImported', 'createdAt', 'updatedAt'])
         && isStr(data.admissionNo, 4, 64)
         && isStr(data.fullName, 2, 160)
         && isValidId(data.programmeId)
-        && data.yearOfStudy is number && data.yearOfStudy >= 1 && data.yearOfStudy <= 6
+        && data.yearOfStudy is number && data.yearOfStudy >= 1 && data.yearOfStudy <= 7
         && data.semester is number && data.semester >= 1 && data.semester <= 3
         && data.category in ['KUCCPS', 'Self-Sponsored']
         && data.academicStatus in ['Active', 'Academic Leave', 'Deferred', 'Graduated', 'Discontinued']
@@ -254,6 +259,9 @@ service cloud.firestore {
         && (!('clearanceLibrary' in data) || data.clearanceLibrary is bool)
         && (!('clearanceDepartment' in data) || data.clearanceDepartment is bool)
         && (!('clearanceExams' in data) || data.clearanceExams is bool)
+        && (!('accountActivated' in data) || data.accountActivated is bool)
+        && (!('activatedAt' in data) || isOptStr(data.activatedAt, 64))
+        && (!('bulkImported' in data) || data.bulkImported is bool)
         && isStr(data.createdAt, 4, 64)
         && isStr(data.updatedAt, 4, 64);
     }
@@ -493,7 +501,7 @@ service cloud.firestore {
 
     function isValidPortalBinding(data) {
       return data.keys().hasAll(['code', 'targetType', 'targetId', 'role', 'fullName', 'verificationHash', 'createdAt'])
-        && data.keys().hasOnly(['code', 'targetType', 'targetId', 'role', 'fullName', 'verificationHash', 'boundUid', 'createdAt'])
+        && data.keys().hasOnly(['code', 'targetType', 'targetId', 'role', 'fullName', 'verificationHash', 'boundUid', 'activated', 'activatedAt', 'createdAt'])
         && isStr(data.code, 3, 64)
         && data.targetType in ['student', 'employee']
         && isValidId(data.targetId)
@@ -501,6 +509,8 @@ service cloud.firestore {
         && isStr(data.fullName, 2, 160)
         && isStr(data.verificationHash, 8, 128)
         && (!('boundUid' in data) || isOptStr(data.boundUid, 128))
+        && (!('activated' in data) || data.activated is bool)
+        && (!('activatedAt' in data) || isOptStr(data.activatedAt, 64))
         && isStr(data.createdAt, 4, 64);
     }
 
@@ -553,13 +563,13 @@ service cloud.firestore {
 
     function isValidOnlineClass(data) {
       return data.keys().hasAll(['courseId', 'courseCode', 'courseTitle', 'title', 'platform', 'scheduledStart', 'durationMinutes', 'status', 'lecturerUid', 'lecturerName', 'createdAt', 'updatedAt'])
-        && data.keys().hasOnly(['courseId', 'courseCode', 'courseTitle', 'title', 'topicSummary', 'platform', 'meetingUrl', 'passcode', 'scheduledStart', 'durationMinutes', 'status', 'lecturerUid', 'lecturerName', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['courseId', 'courseCode', 'courseTitle', 'title', 'topicSummary', 'platform', 'meetingUrl', 'passcode', 'scheduledStart', 'durationMinutes', 'status', 'lecturerUid', 'lecturerName', 'qrToken', 'qrExpiresAt', 'qrCreatedAt', 'createdAt', 'updatedAt'])
         && isValidId(data.courseId)
         && isStr(data.courseCode, 2, 24)
         && isStr(data.courseTitle, 2, 180)
         && isStr(data.title, 2, 200)
         && (!('topicSummary' in data) || isOptStr(data.topicSummary, 1000))
-        && data.platform in ['PUST Virtual Room', 'Google Meet', 'Zoom', 'Microsoft Teams']
+        && data.platform in ['EDUVANCE Virtual Room', 'PUST Virtual Room', 'Google Meet', 'Zoom', 'Microsoft Teams']
         && (!('meetingUrl' in data) || isOptStr(data.meetingUrl, 500))
         && (!('passcode' in data) || isOptStr(data.passcode, 64))
         && isStr(data.scheduledStart, 4, 64)
@@ -567,6 +577,46 @@ service cloud.firestore {
         && data.status in ['scheduled', 'live', 'completed']
         && isValidId(data.lecturerUid)
         && isStr(data.lecturerName, 2, 160)
+        && (!('qrToken' in data) || isOptStr(data.qrToken, 64))
+        && (!('qrExpiresAt' in data) || isOptStr(data.qrExpiresAt, 64))
+        && (!('qrCreatedAt' in data) || isOptStr(data.qrCreatedAt, 64))
+        && isStr(data.createdAt, 4, 64)
+        && isStr(data.updatedAt, 4, 64);
+    }
+
+    function isValidOnlineClassAttendance(data) {
+      return data.keys().hasAll(['classId', 'courseId', 'courseCode', 'studentUid', 'displayName', 'tokenUsed', 'method', 'checkedInAt'])
+        && data.keys().hasOnly(['classId', 'courseId', 'courseCode', 'studentUid', 'studentId', 'admissionNo', 'displayName', 'tokenUsed', 'method', 'checkedInAt'])
+        && isValidId(data.classId)
+        && isValidId(data.courseId)
+        && isStr(data.courseCode, 2, 24)
+        && isValidId(data.studentUid)
+        && (!('studentId' in data) || isOptStr(data.studentId, 128))
+        && (!('admissionNo' in data) || isOptStr(data.admissionNo, 64))
+        && isStr(data.displayName, 1, 160)
+        && isStr(data.tokenUsed, 2, 64)
+        && data.method in ['qr_scan', 'manual_checkin']
+        && isStr(data.checkedInAt, 4, 64);
+    }
+
+    function isValidExamTimetable(data) {
+      return data.keys().hasAll(['courseId', 'courseCode', 'courseTitle', 'examType', 'examDate', 'startTime', 'durationMinutes', 'venue', 'academicYear', 'semesterName', 'status', 'createdByUid', 'createdByName', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['courseId', 'courseCode', 'courseTitle', 'examType', 'examDate', 'startTime', 'durationMinutes', 'venue', 'invigilator', 'instructions', 'academicYear', 'semesterName', 'status', 'createdByUid', 'createdByName', 'createdAt', 'updatedAt'])
+        && isValidId(data.courseId)
+        && isStr(data.courseCode, 2, 24)
+        && isStr(data.courseTitle, 2, 180)
+        && data.examType in ['End-of-Semester Exam', 'CAT', 'Practical Exam', 'Online Exam']
+        && isStr(data.examDate, 4, 32)
+        && isStr(data.startTime, 3, 16)
+        && data.durationMinutes is number && data.durationMinutes >= 15 && data.durationMinutes <= 360
+        && isStr(data.venue, 2, 160)
+        && (!('invigilator' in data) || isOptStr(data.invigilator, 120))
+        && (!('instructions' in data) || isOptStr(data.instructions, 600))
+        && isStr(data.academicYear, 4, 32)
+        && isStr(data.semesterName, 2, 64)
+        && data.status in ['scheduled', 'postponed', 'completed']
+        && isValidId(data.createdByUid)
+        && isStr(data.createdByName, 2, 160)
         && isStr(data.createdAt, 4, 64)
         && isStr(data.updatedAt, 4, 64);
     }
@@ -789,6 +839,8 @@ service cloud.firestore {
         && (
           isAdmin() ||
           (request.auth.uid == uid && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'updatedAt'])) ||
+          (request.auth.uid == uid && incoming().diff(existing()).affectedKeys().hasOnly(['lastActiveAt', 'updatedAt'])) ||
+          (request.auth.uid == uid && incoming().diff(existing()).affectedKeys().hasOnly(['accountActivated', 'departmentId', 'programmeId', 'lastActiveAt', 'updatedAt'])) ||
           (
             request.auth.uid == uid &&
             existing().role in ['applicant', 'student'] &&
@@ -797,7 +849,7 @@ service cloud.firestore {
             exists(/databases/$(database)/documents/portal_bindings/$(incoming().bindingId)) &&
             get(/databases/$(database)/documents/portal_bindings/$(incoming().bindingId)).data.boundUid == request.auth.uid &&
             get(/databases/$(database)/documents/portal_bindings/$(incoming().bindingId)).data.role == incoming().role &&
-            incoming().diff(existing()).affectedKeys().hasOnly(['role', 'studentId', 'employeeId', 'bindingId', 'updatedAt'])
+            incoming().diff(existing()).affectedKeys().hasOnly(['role', 'studentId', 'employeeId', 'bindingId', 'accountActivated', 'lastActiveAt', 'updatedAt'])
           )
         );
       allow delete: if isValidId(uid) && isAdmin();
@@ -926,6 +978,11 @@ service cloud.firestore {
             hasUserDoc() &&
             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == studentId &&
             incoming().diff(existing()).affectedKeys().hasOnly(['uid', 'updatedAt'])
+          ) ||
+          (
+            (existing().uid == request.auth.uid || (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == studentId)) &&
+            (incoming().programmeId == existing().programmeId || exists(/databases/$(database)/documents/programmes/$(incoming().programmeId))) &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['accountActivated', 'activatedAt', 'email', 'phone', 'departmentId', 'programmeId', 'programmeName', 'yearOfStudy', 'semester', 'updatedAt'])
           )
         );
       allow delete: if isValidId(studentId) && isAdmin();
@@ -1120,6 +1177,10 @@ service cloud.firestore {
           (!('boundUid' in existing()) || existing().boundUid == '') &&
           incoming().boundUid == request.auth.uid &&
           incoming().diff(existing()).affectedKeys().hasOnly(['boundUid'])
+        ) ||
+        (
+          existing().boundUid == request.auth.uid &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['activated', 'activatedAt'])
         )
       );
       allow delete: if isValidId(bindingId) && isAdmin();
@@ -1169,7 +1230,13 @@ service cloud.firestore {
       allow update: if isValidId(classId) && isAcademicStaff() && isValidOnlineClass(incoming())
         && incoming().courseId == existing().courseId
         && incoming().createdAt == existing().createdAt
-        && (isAdmin() || existing().lecturerUid == request.auth.uid);
+        && (
+          isAdmin() ||
+          isManagement() ||
+          isHOD() ||
+          existing().lecturerUid == request.auth.uid ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['qrToken', 'qrExpiresAt', 'qrCreatedAt', 'status', 'updatedAt'])
+        );
       allow delete: if isValidId(classId) && (isAdmin() || (isAcademicStaff() && existing().lecturerUid == request.auth.uid));
 
       match /messages/{messageId} {
@@ -1183,6 +1250,40 @@ service cloud.firestore {
         allow update: if false;
         allow delete: if isValidId(classId) && isValidId(messageId) && isAdmin();
       }
+
+      match /attendance/{attendeeUid} {
+        allow get: if isValidId(classId) && isValidId(attendeeUid) && isVerifiedUser() && (isAcademicStaff() || request.auth.uid == attendeeUid);
+        allow list: if isValidId(classId) && isVerifiedUser() && (isAcademicStaff() || resource.data.studentUid == request.auth.uid);
+        allow create, update: if isValidId(classId) && isValidId(attendeeUid) && isVerifiedUser()
+          && isValidOnlineClassAttendance(incoming())
+          && incoming().classId == classId
+          && incoming().studentUid == attendeeUid
+          && exists(/databases/$(database)/documents/online_classes/$(classId))
+          && (
+            isAdmin() ||
+            isAcademicStaff() ||
+            (
+              request.auth.uid == attendeeUid &&
+              incoming().method == 'qr_scan' &&
+              'qrToken' in get(/databases/$(database)/documents/online_classes/$(classId)).data &&
+              incoming().tokenUsed == get(/databases/$(database)/documents/online_classes/$(classId)).data.qrToken
+            )
+          );
+        allow delete: if isValidId(classId) && isValidId(attendeeUid) && (isAdmin() || isAcademicStaff());
+      }
+    }
+
+    // Examination Timetable Schedule
+    match /exam_timetables/{examId} {
+      allow get: if isValidId(examId) && isVerifiedUser() && (isAcademicStaff() || isStudent());
+      allow list: if isVerifiedUser() && (isAcademicStaff() || isStudent());
+      allow create: if isValidId(examId) && isAcademicStaff() && isValidExamTimetable(incoming())
+        && exists(/databases/$(database)/documents/courses/$(incoming().courseId))
+        && (isAdmin() || incoming().createdByUid == request.auth.uid);
+      allow update: if isValidId(examId) && isAcademicStaff() && isValidExamTimetable(incoming())
+        && incoming().courseId == existing().courseId
+        && incoming().createdAt == existing().createdAt;
+      allow delete: if isValidId(examId) && (isAdmin() || (isAcademicStaff() && existing().createdByUid == request.auth.uid));
     }
 
     // Online CATs & Online Exams

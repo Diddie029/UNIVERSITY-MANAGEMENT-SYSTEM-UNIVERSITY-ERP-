@@ -24,6 +24,7 @@ import {
   Department,
   Employee,
   ExamMark,
+  ExamTimetableEntry,
   Faculty,
   FeeStructure,
   LeaveRequest,
@@ -60,6 +61,7 @@ export interface ErpDataset {
   registrations: CourseRegistration[];
   attendanceSessions: AttendanceSession[];
   examMarks: ExamMark[];
+  examTimetables: ExamTimetableEntry[];
   courseResources: CourseResource[];
   onlineClasses: OnlineClass[];
   onlineAssessments: OnlineAssessment[];
@@ -142,6 +144,7 @@ export function useErpData(): ErpDataset {
   const [registrations, setRegistrations] = useState<CourseRegistration[]>([]);
   const [attendanceSessions, setAttendanceSessions] = useState<AttendanceSession[]>([]);
   const [examMarks, setExamMarks] = useState<ExamMark[]>([]);
+  const [examTimetables, setExamTimetables] = useState<ExamTimetableEntry[]>([]);
   const [courseResources, setCourseResources] = useState<CourseResource[]>([]);
   const [onlineClasses, setOnlineClasses] = useState<OnlineClass[]>([]);
   const [onlineAssessments, setOnlineAssessments] = useState<OnlineAssessment[]>([]);
@@ -192,6 +195,7 @@ export function useErpData(): ErpDataset {
       setRegistrations([]);
       setAttendanceSessions([]);
       setExamMarks([]);
+      setExamTimetables([]);
       setCourseResources([]);
       setOnlineClasses([]);
       setOnlineAssessments([]);
@@ -285,6 +289,7 @@ export function useErpData(): ErpDataset {
     if (isAcad) {
       unsubs.push(subscribeCol<AttendanceSession>(collection(db, 'attendance_sessions'), 'attendance_sessions', setAttendanceSessions));
       unsubs.push(subscribeCol<ExamMark>(collection(db, 'exam_marks'), 'exam_marks', setExamMarks));
+      unsubs.push(subscribeCol<ExamTimetableEntry>(collection(db, 'exam_timetables'), 'exam_timetables', setExamTimetables));
       unsubs.push(subscribeCol<CourseResource>(collection(db, 'course_resources'), 'course_resources', setCourseResources));
       unsubs.push(subscribeCol<OnlineClass>(collection(db, 'online_classes'), 'online_classes', setOnlineClasses));
       unsubs.push(subscribeCol<OnlineAssessment>(collection(db, 'online_assessments'), 'online_assessments', setOnlineAssessments));
@@ -298,6 +303,7 @@ export function useErpData(): ErpDataset {
       unsubs.push(subscribeCol<StudyGroupMembershipIndex>(collection(db, 'users', uid, 'study_group_memberships'), `users/${uid}/study_group_memberships`, setStudyGroupMemberships));
     } else if (actualRole === 'student') {
       setAttendanceSessions([]);
+      unsubs.push(subscribeCol<ExamTimetableEntry>(collection(db, 'exam_timetables'), 'exam_timetables', setExamTimetables));
       unsubs.push(subscribeCol<CourseResource>(collection(db, 'course_resources'), 'course_resources', setCourseResources));
       unsubs.push(subscribeCol<OnlineClass>(collection(db, 'online_classes'), 'online_classes', setOnlineClasses));
       unsubs.push(subscribeCol<StudyGroup>(collection(db, 'study_groups'), 'study_groups', setStudyGroups));
@@ -401,6 +407,7 @@ export function useErpData(): ErpDataset {
     } else {
       setAttendanceSessions([]);
       setExamMarks([]);
+      setExamTimetables([]);
       setCourseResources([]);
       setOnlineClasses([]);
       setOnlineAssessments([]);
@@ -539,6 +546,7 @@ export function useErpData(): ErpDataset {
     registrations,
     attendanceSessions,
     examMarks,
+    examTimetables: [...examTimetables].sort((a, b) => `${a.examDate}T${a.startTime}`.localeCompare(`${b.examDate}T${b.startTime}`)),
     courseResources,
     onlineClasses,
     onlineAssessments,
