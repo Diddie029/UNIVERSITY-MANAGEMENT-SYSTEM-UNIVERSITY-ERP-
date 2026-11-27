@@ -223,7 +223,7 @@ export function useErpData(): ErpDataset {
 
     const unsubs: (() => void)[] = [];
     const isAdmin = actualRole === 'super_admin';
-    const isMgmt = isAdmin || actualRole === 'management';
+    const isMgmt = isAdmin || actualRole === 'admin' || actualRole === 'management';
     const isAdm = isMgmt || actualRole === 'admissions';
     const isAcad = isMgmt || ['lecturer', 'hod', 'exam_officer'].includes(actualRole);
     const isFin = isMgmt || actualRole === 'finance';

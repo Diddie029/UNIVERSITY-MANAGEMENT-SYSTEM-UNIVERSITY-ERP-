@@ -50,10 +50,10 @@ export function StudentsAcademicsModule({ mode, data }: StudentsAcademicsModuleP
   const { showToast } = useToast();
 
   const isSuperAdmin = profile?.role === 'super_admin';
-  const isStaff = ['super_admin', 'management', 'admissions', 'lecturer', 'hod', 'exam_officer'].includes(
+  const isStaff = ['super_admin', 'admin', 'management', 'admissions', 'lecturer', 'hod', 'exam_officer'].includes(
     effectiveRole
   );
-  const canEditStatus = ['super_admin', 'management', 'admissions'].includes(effectiveRole);
+  const canEditStatus = ['super_admin', 'admin', 'management', 'admissions'].includes(effectiveRole);
   const canModerate = ['super_admin', 'hod', 'exam_officer'].includes(effectiveRole);
   const canPublish = ['super_admin', 'exam_officer'].includes(effectiveRole);
 
@@ -233,6 +233,7 @@ export function StudentsAcademicsModule({ mode, data }: StudentsAcademicsModuleP
     try {
       const batch = writeBatch(db);
       batch.set(doc(db, 'students', studentId), {
+        uid: '',
         admissionNo,
         fullName: clampStr(newStuName, 160),
         email: clampStr(newStuEmail, 200),

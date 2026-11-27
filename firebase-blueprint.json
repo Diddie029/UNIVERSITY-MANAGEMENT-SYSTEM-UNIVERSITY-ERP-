@@ -9,7 +9,7 @@
         "displayName": { "type": "string", "minLength": 1, "maxLength": 160 },
         "role": {
           "type": "string",
-          "enum": ["super_admin", "management", "admissions", "lecturer", "hod", "exam_officer", "finance", "hr", "student", "applicant"]
+          "enum": ["super_admin", "admin", "management", "admissions", "lecturer", "hod", "exam_officer", "finance", "hr", "student", "applicant"]
         },
         "departmentId": { "type": "string", "maxLength": 128 },
         "programmeId": { "type": "string", "maxLength": 128 },
@@ -44,7 +44,7 @@
       "type": "object",
       "properties": {
         "email": { "type": "string", "minLength": 3, "maxLength": 200 },
-        "role": { "type": "string", "enum": ["super_admin", "management", "admissions", "lecturer", "hod", "exam_officer", "finance", "hr", "student"] },
+        "role": { "type": "string", "enum": ["super_admin", "admin", "management", "admissions", "lecturer", "hod", "exam_officer", "finance", "hr", "student"] },
         "departmentId": { "type": "string", "maxLength": 128 },
         "assignedBy": { "type": "string", "minLength": 1, "maxLength": 128 },
         "createdAt": { "type": "string", "format": "date-time" }
@@ -486,7 +486,7 @@
         "code": { "type": "string", "minLength": 3, "maxLength": 64 },
         "targetType": { "type": "string", "enum": ["student", "employee"] },
         "targetId": { "type": "string", "minLength": 1, "maxLength": 128 },
-        "role": { "type": "string", "enum": ["student", "lecturer", "hod", "exam_officer", "finance", "hr", "admissions", "management"] },
+        "role": { "type": "string", "enum": ["student", "lecturer", "hod", "exam_officer", "finance", "hr", "admissions", "admin", "management"] },
         "fullName": { "type": "string", "minLength": 2, "maxLength": 160 },
         "verificationHash": { "type": "string", "minLength": 8, "maxLength": 128 },
         "boundUid": { "type": "string", "maxLength": 128 },
@@ -525,6 +525,11 @@
         "action": { "type": "string", "minLength": 2, "maxLength": 120 },
         "entityPath": { "type": "string", "minLength": 2, "maxLength": 240 },
         "details": { "type": "string", "minLength": 2, "maxLength": 1000 },
+        "previousRole": { "type": "string", "maxLength": 40 },
+        "newRole": { "type": "string", "maxLength": 40 },
+        "targetUid": { "type": "string", "maxLength": 128 },
+        "targetName": { "type": "string", "maxLength": 160 },
+        "reason": { "type": "string", "maxLength": 300 },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["actorUid", "actorName", "actorRole", "action", "entityPath", "details", "createdAt"]

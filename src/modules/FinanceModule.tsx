@@ -35,7 +35,7 @@ export function FinanceModule({ data }: FinanceModuleProps) {
   const { firebaseUser, profile, effectiveRole } = useAuth();
   const { showToast } = useToast();
 
-  const isFinanceStaff = ['super_admin', 'management', 'finance'].includes(effectiveRole);
+  const isFinanceStaff = ['super_admin', 'admin', 'management', 'finance'].includes(effectiveRole);
 
   const [tab, setTab] = useState<'reconciliation' | 'accounts' | 'structures' | 'scholarships'>(
     effectiveRole === 'student' ? 'accounts' : 'reconciliation'

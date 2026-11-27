@@ -51,15 +51,15 @@ service cloud.firestore {
     }
 
     function isManagement() {
-      return isAdmin() || (hasUserDoc() && userRole() == 'management');
+      return isAdmin() || (hasUserDoc() && userRole() in ['admin', 'management']);
     }
 
     function isAdmissions() {
-      return isAdmin() || (hasUserDoc() && userRole() in ['admissions', 'management']);
+      return isAdmin() || (hasUserDoc() && userRole() in ['admissions', 'admin', 'management']);
     }
 
     function isAcademicStaff() {
-      return isAdmin() || (hasUserDoc() && userRole() in ['lecturer', 'hod', 'exam_officer', 'management']);
+      return isAdmin() || (hasUserDoc() && userRole() in ['lecturer', 'hod', 'exam_officer', 'admin', 'management']);
     }
 
     function isHOD() {
@@ -71,11 +71,11 @@ service cloud.firestore {
     }
 
     function isFinance() {
-      return isAdmin() || (hasUserDoc() && userRole() in ['finance', 'management']);
+      return isAdmin() || (hasUserDoc() && userRole() in ['finance', 'admin', 'management']);
     }
 
     function isHR() {
-      return isAdmin() || (hasUserDoc() && userRole() in ['hr', 'management']);
+      return isAdmin() || (hasUserDoc() && userRole() in ['hr', 'admin', 'management']);
     }
 
     function isStudent() {
@@ -101,7 +101,7 @@ service cloud.firestore {
         && data.keys().hasOnly(['uid', 'displayName', 'role', 'departmentId', 'programmeId', 'studentId', 'employeeId', 'inviteId', 'bindingId', 'status', 'accountActivated', 'lastActiveAt', 'createdAt', 'updatedAt'])
         && isValidId(data.uid)
         && isStr(data.displayName, 1, 160)
-        && data.role in ['super_admin', 'management', 'admissions', 'lecturer', 'hod', 'exam_officer', 'finance', 'hr', 'student', 'applicant']
+        && data.role in ['super_admin', 'admin', 'management', 'admissions', 'lecturer', 'hod', 'exam_officer', 'finance', 'hr', 'student', 'applicant']
         && data.status in ['active', 'suspended']
         && (!('departmentId' in data) || isOptStr(data.departmentId, 128))
         && (!('programmeId' in data) || isOptStr(data.programmeId, 128))
@@ -129,7 +129,7 @@ service cloud.firestore {
       return data.keys().hasAll(['email', 'role', 'assignedBy', 'createdAt'])
         && data.keys().hasOnly(['email', 'role', 'departmentId', 'assignedBy', 'createdAt'])
         && isStr(data.email, 3, 200)
-        && data.role in ['super_admin', 'management', 'admissions', 'lecturer', 'hod', 'exam_officer', 'finance', 'hr', 'student']
+        && data.role in ['super_admin', 'admin', 'management', 'admissions', 'lecturer', 'hod', 'exam_officer', 'finance', 'hr', 'student']
         && (!('departmentId' in data) || isOptStr(data.departmentId, 128))
         && isStr(data.assignedBy, 1, 128)
         && isStr(data.createdAt, 4, 64);
@@ -505,7 +505,7 @@ service cloud.firestore {
         && isStr(data.code, 3, 64)
         && data.targetType in ['student', 'employee']
         && isValidId(data.targetId)
-        && data.role in ['student', 'lecturer', 'hod', 'exam_officer', 'finance', 'hr', 'admissions', 'management']
+        && data.role in ['student', 'lecturer', 'hod', 'exam_officer', 'finance', 'hr', 'admissions', 'admin', 'management']
         && isStr(data.fullName, 2, 160)
         && isStr(data.verificationHash, 8, 128)
         && (!('boundUid' in data) || isOptStr(data.boundUid, 128))
@@ -531,13 +531,18 @@ service cloud.firestore {
 
     function isValidAuditLog(data) {
       return data.keys().hasAll(['actorUid', 'actorName', 'actorRole', 'action', 'entityPath', 'details', 'createdAt'])
-        && data.keys().hasOnly(['actorUid', 'actorName', 'actorRole', 'action', 'entityPath', 'details', 'createdAt'])
+        && data.keys().hasOnly(['actorUid', 'actorName', 'actorRole', 'action', 'entityPath', 'details', 'previousRole', 'newRole', 'targetUid', 'targetName', 'reason', 'createdAt'])
         && isValidId(data.actorUid)
         && isStr(data.actorName, 1, 160)
         && isStr(data.actorRole, 1, 40)
         && isStr(data.action, 2, 120)
         && isStr(data.entityPath, 2, 240)
         && isStr(data.details, 2, 1000)
+        && (!('previousRole' in data) || isOptStr(data.previousRole, 40))
+        && (!('newRole' in data) || isOptStr(data.newRole, 40))
+        && (!('targetUid' in data) || isOptStr(data.targetUid, 128))
+        && (!('targetName' in data) || isOptStr(data.targetName, 160))
+        && (!('reason' in data) || isOptStr(data.reason, 300))
         && isStr(data.createdAt, 4, 64);
     }
 
@@ -962,8 +967,19 @@ service cloud.firestore {
 
     // Students
     match /students/{studentId} {
-      allow get: if isValidId(studentId) && isVerifiedUser() && (resource.data.uid == request.auth.uid || isAdmissions() || isAcademicStaff() || isFinance() || (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == studentId));
-      allow list: if isVerifiedUser() && (resource.data.uid == request.auth.uid || isAdmissions() || isAcademicStaff() || isFinance());
+      allow get: if isValidId(studentId) && isVerifiedUser() && (
+        ('uid' in resource.data && resource.data.uid == request.auth.uid) ||
+        isAdmissions() ||
+        isAcademicStaff() ||
+        isFinance() ||
+        (hasUserDoc() && 'studentId' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == studentId)
+      );
+      allow list: if isVerifiedUser() && (
+        ('uid' in resource.data && resource.data.uid == request.auth.uid) ||
+        isAdmissions() ||
+        isAcademicStaff() ||
+        isFinance()
+      );
       allow create: if isValidId(studentId) && (isAdmin() || isAdmissions()) && isValidStudent(incoming());
       allow update: if isValidId(studentId) && isVerifiedUser() && isValidStudent(incoming())
         && incoming().createdAt == existing().createdAt
@@ -974,15 +990,28 @@ service cloud.firestore {
           (isAcademicStaff() && incoming().diff(existing()).affectedKeys().hasOnly(['clearanceDepartment', 'clearanceExams', 'updatedAt'])) ||
           (
             (!('uid' in existing()) || existing().uid == '') &&
+            'uid' in incoming() &&
             incoming().uid == request.auth.uid &&
             hasUserDoc() &&
+            'studentId' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data &&
             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == studentId &&
             incoming().diff(existing()).affectedKeys().hasOnly(['uid', 'updatedAt'])
           ) ||
           (
-            (existing().uid == request.auth.uid || (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == studentId)) &&
+            (
+              ('uid' in existing() && existing().uid == request.auth.uid) ||
+              (hasUserDoc() && 'studentId' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == studentId)
+            ) &&
             (incoming().programmeId == existing().programmeId || exists(/databases/$(database)/documents/programmes/$(incoming().programmeId))) &&
-            incoming().diff(existing()).affectedKeys().hasOnly(['accountActivated', 'activatedAt', 'email', 'phone', 'departmentId', 'programmeId', 'programmeName', 'yearOfStudy', 'semester', 'updatedAt'])
+            (
+              incoming().diff(existing()).affectedKeys().hasOnly(['accountActivated', 'activatedAt', 'email', 'phone', 'departmentId', 'programmeId', 'programmeName', 'yearOfStudy', 'semester', 'updatedAt']) ||
+              (
+                (!('uid' in existing()) || existing().uid == '') &&
+                'uid' in incoming() &&
+                incoming().uid == request.auth.uid &&
+                incoming().diff(existing()).affectedKeys().hasOnly(['uid', 'accountActivated', 'activatedAt', 'email', 'phone', 'departmentId', 'programmeId', 'programmeName', 'yearOfStudy', 'semester', 'updatedAt'])
+              )
+            )
           )
         );
       allow delete: if isValidId(studentId) && isAdmin();
@@ -990,14 +1019,26 @@ service cloud.firestore {
 
     // Course Registrations
     match /course_registrations/{regId} {
-      allow get: if isValidId(regId) && isVerifiedUser() && (resource.data.studentUid == request.auth.uid || isAcademicStaff() || isAdmissions() || isFinance() || (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.studentId));
-      allow list: if isVerifiedUser() && (resource.data.studentUid == request.auth.uid || isAcademicStaff() || isAdmissions() || isFinance() || (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.studentId));
+      allow get: if isValidId(regId) && isVerifiedUser() && (
+        ('studentUid' in resource.data && resource.data.studentUid == request.auth.uid) ||
+        isAcademicStaff() ||
+        isAdmissions() ||
+        isFinance() ||
+        (hasUserDoc() && 'studentId' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.studentId)
+      );
+      allow list: if isVerifiedUser() && (
+        ('studentUid' in resource.data && resource.data.studentUid == request.auth.uid) ||
+        isAcademicStaff() ||
+        isAdmissions() ||
+        isFinance() ||
+        (hasUserDoc() && 'studentId' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.studentId)
+      );
       allow create: if isValidId(regId) && isVerifiedUser() && isValidCourseRegistration(incoming())
-        && (isAdmin() || isAcademicStaff() || incoming().studentUid == request.auth.uid)
+        && (isAdmin() || isAcademicStaff() || ('studentUid' in incoming() && incoming().studentUid == request.auth.uid))
         && exists(/databases/$(database)/documents/students/$(incoming().studentId))
         && exists(/databases/$(database)/documents/courses/$(incoming().courseId));
       allow update: if isValidId(regId) && isVerifiedUser() && isValidCourseRegistration(incoming())
-        && (isAdmin() || isAcademicStaff() || (existing().studentUid == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['status'])));
+        && (isAdmin() || isAcademicStaff() || ('studentUid' in existing() && existing().studentUid == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['status'])));
       allow delete: if isValidId(regId) && isAdmin();
     }
 
@@ -1017,11 +1058,11 @@ service cloud.firestore {
     match /exam_marks/{markId} {
       allow get: if isValidId(markId) && isVerifiedUser() && (
         isAcademicStaff() ||
-        ((resource.data.studentUid == request.auth.uid || (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.studentId)) && resource.data.workflowStatus == 'published')
+        ((('studentUid' in resource.data && resource.data.studentUid == request.auth.uid) || (hasUserDoc() && 'studentId' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.studentId)) && resource.data.workflowStatus == 'published')
       );
       allow list: if isVerifiedUser() && (
         isAcademicStaff() ||
-        ((resource.data.studentUid == request.auth.uid || (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.studentId)) && resource.data.workflowStatus == 'published')
+        ((('studentUid' in resource.data && resource.data.studentUid == request.auth.uid) || (hasUserDoc() && 'studentId' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.studentId)) && resource.data.workflowStatus == 'published')
       );
       allow create: if isValidId(markId) && isAcademicStaff() && isValidExamMark(incoming())
         && exists(/databases/$(database)/documents/students/$(incoming().studentId))
@@ -1049,23 +1090,24 @@ service cloud.firestore {
 
     // Student Accounts
     match /student_accounts/{studentId} {
-      allow get: if isValidId(studentId) && isVerifiedUser() && (resource.data.studentUid == request.auth.uid || isFinance() || isAdmissions() || (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == studentId));
-      allow list: if isVerifiedUser() && (resource.data.studentUid == request.auth.uid || isFinance() || isAdmissions() || (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.studentId));
+      allow get: if isValidId(studentId) && isVerifiedUser() && (('studentUid' in resource.data && resource.data.studentUid == request.auth.uid) || isFinance() || isAdmissions() || (hasUserDoc() && 'studentId' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == studentId));
+      allow list: if isVerifiedUser() && (('studentUid' in resource.data && resource.data.studentUid == request.auth.uid) || isFinance() || isAdmissions() || (hasUserDoc() && 'studentId' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.studentId));
       allow create: if isValidId(studentId) && (isFinance() || isAdmissions()) && isValidStudentAccount(incoming());
       allow update: if isValidId(studentId) && isVerifiedUser() && isValidStudentAccount(incoming()) && (
         isFinance() ||
         isAdmissions() ||
-        ((!('studentUid' in existing()) || existing().studentUid == '') && incoming().studentUid == request.auth.uid && hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == studentId && incoming().diff(existing()).affectedKeys().hasOnly(['studentUid', 'updatedAt']))
+        ((!('studentUid' in existing()) || existing().studentUid == '') && 'studentUid' in incoming() && incoming().studentUid == request.auth.uid && hasUserDoc() && 'studentId' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == studentId && incoming().diff(existing()).affectedKeys().hasOnly(['studentUid', 'updatedAt']))
       );
       allow delete: if isValidId(studentId) && isAdmin();
     }
 
     // Payment Submissions (Manual Verification Gate)
     match /payment_submissions/{paymentId} {
-      allow get: if isValidId(paymentId) && isVerifiedUser() && (resource.data.studentUid == request.auth.uid || isFinance() || (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.studentId));
-      allow list: if isVerifiedUser() && (resource.data.studentUid == request.auth.uid || isFinance() || (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.studentId));
+      allow get: if isValidId(paymentId) && isVerifiedUser() && (('studentUid' in resource.data && resource.data.studentUid == request.auth.uid) || isFinance() || (hasUserDoc() && 'studentId' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.studentId));
+      allow list: if isVerifiedUser() && (('studentUid' in resource.data && resource.data.studentUid == request.auth.uid) || isFinance() || (hasUserDoc() && 'studentId' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.studentId));
       allow create: if isValidId(paymentId) && isVerifiedUser() && isValidPaymentSubmission(incoming())
         && (isFinance() || (
+          'studentUid' in incoming() &&
           incoming().studentUid == request.auth.uid &&
           incoming().status == 'pending_verification' &&
           (!('verifiedBy' in incoming()) || incoming().verifiedBy == '') &&
@@ -1082,8 +1124,8 @@ service cloud.firestore {
 
     // Official Receipts
     match /receipts/{receiptId} {
-      allow get: if isValidId(receiptId) && isVerifiedUser() && (resource.data.studentUid == request.auth.uid || isFinance() || (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.studentId));
-      allow list: if isVerifiedUser() && (resource.data.studentUid == request.auth.uid || isFinance() || (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.studentId));
+      allow get: if isValidId(receiptId) && isVerifiedUser() && (('studentUid' in resource.data && resource.data.studentUid == request.auth.uid) || isFinance() || (hasUserDoc() && 'studentId' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.studentId));
+      allow list: if isVerifiedUser() && (('studentUid' in resource.data && resource.data.studentUid == request.auth.uid) || isFinance() || (hasUserDoc() && 'studentId' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.studentId));
       allow create: if isValidId(receiptId) && isFinance() && isValidReceipt(incoming())
         && exists(/databases/$(database)/documents/payment_submissions/$(incoming().paymentId));
       allow update, delete: if false;
@@ -1100,12 +1142,12 @@ service cloud.firestore {
 
     // HR Employees
     match /employees/{empId} {
-      allow get: if isValidId(empId) && isVerifiedUser() && (resource.data.uid == request.auth.uid || isHR() || isFinance() || (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.employeeId == empId));
-      allow list: if isVerifiedUser() && (resource.data.uid == request.auth.uid || isHR() || isFinance() || (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.employeeId == resource.id));
+      allow get: if isValidId(empId) && isVerifiedUser() && (('uid' in resource.data && resource.data.uid == request.auth.uid) || isHR() || isFinance() || (hasUserDoc() && 'employeeId' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.employeeId == empId));
+      allow list: if isVerifiedUser() && (('uid' in resource.data && resource.data.uid == request.auth.uid) || isHR() || isFinance() || (hasUserDoc() && 'employeeId' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.employeeId == resource.id));
       allow create: if isValidId(empId) && isHR() && isValidEmployee(incoming());
       allow update: if isValidId(empId) && isVerifiedUser() && isValidEmployee(incoming()) && (
         isHR() ||
-        ((!('uid' in existing()) || existing().uid == '') && incoming().uid == request.auth.uid && hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.employeeId == empId && incoming().diff(existing()).affectedKeys().hasOnly(['uid', 'updatedAt']))
+        ((!('uid' in existing()) || existing().uid == '') && 'uid' in incoming() && incoming().uid == request.auth.uid && hasUserDoc() && 'employeeId' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.employeeId == empId && incoming().diff(existing()).affectedKeys().hasOnly(['uid', 'updatedAt']))
       );
       allow delete: if isValidId(empId) && isAdmin();
     }
@@ -1175,10 +1217,12 @@ service cloud.firestore {
         isHR() ||
         (
           (!('boundUid' in existing()) || existing().boundUid == '') &&
+          'boundUid' in incoming() &&
           incoming().boundUid == request.auth.uid &&
           incoming().diff(existing()).affectedKeys().hasOnly(['boundUid'])
         ) ||
         (
+          'boundUid' in existing() &&
           existing().boundUid == request.auth.uid &&
           incoming().diff(existing()).affectedKeys().hasOnly(['activated', 'activatedAt'])
         )
@@ -1305,12 +1349,12 @@ service cloud.firestore {
       allow get: if isValidId(submissionId) && isVerifiedUser() && (
         isAcademicStaff() ||
         resource.data.studentUid == request.auth.uid ||
-        (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.studentId)
+        (hasUserDoc() && 'studentId' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.studentId)
       );
       allow list: if isVerifiedUser() && (
         isAcademicStaff() ||
         resource.data.studentUid == request.auth.uid ||
-        (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.studentId)
+        (hasUserDoc() && 'studentId' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.studentId)
       );
       allow create: if isValidId(submissionId) && isVerifiedUser() && isValidAssessmentSubmission(incoming())
         && incoming().studentUid == request.auth.uid
@@ -1345,12 +1389,12 @@ service cloud.firestore {
       allow get: if isValidId(submissionId) && isVerifiedUser() && (
         isAcademicStaff() ||
         resource.data.studentUid == request.auth.uid ||
-        (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.studentId)
+        (hasUserDoc() && 'studentId' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.studentId)
       );
       allow list: if isVerifiedUser() && (
         isAcademicStaff() ||
         resource.data.studentUid == request.auth.uid ||
-        (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.studentId)
+        (hasUserDoc() && 'studentId' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.studentId)
       );
       allow create: if isValidId(submissionId) && isVerifiedUser() && isValidAssignmentSubmission(incoming())
         && incoming().studentUid == request.auth.uid
@@ -1381,16 +1425,16 @@ service cloud.firestore {
         isAcademicStaff() ||
         (isStudent() && (
           resource.data.targetScope == 'course' ||
-          resource.data.targetStudentUid == request.auth.uid ||
-          (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.targetStudentId)
+          ('targetStudentUid' in resource.data && resource.data.targetStudentUid == request.auth.uid) ||
+          (hasUserDoc() && 'studentId' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data && 'targetStudentId' in resource.data && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.targetStudentId)
         ))
       );
       allow list: if isVerifiedUser() && (
         isAcademicStaff() ||
         (isStudent() && (
           resource.data.targetScope == 'course' ||
-          resource.data.targetStudentUid == request.auth.uid ||
-          (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.targetStudentId)
+          ('targetStudentUid' in resource.data && resource.data.targetStudentUid == request.auth.uid) ||
+          (hasUserDoc() && 'studentId' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data && 'targetStudentId' in resource.data && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.targetStudentId)
         ))
       );
       allow create: if isValidId(notifId) && isAcademicStaff() && isValidStudentNotification(incoming())
@@ -1407,8 +1451,8 @@ service cloud.firestore {
           (
             existing().targetScope == 'student' &&
             (
-              existing().targetStudentUid == request.auth.uid ||
-              (hasUserDoc() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == existing().targetStudentId)
+              ('targetStudentUid' in existing() && existing().targetStudentUid == request.auth.uid) ||
+              (hasUserDoc() && 'studentId' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data && 'targetStudentId' in existing() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == existing().targetStudentId)
             ) &&
             incoming().diff(existing()).affectedKeys().hasOnly(['isRead', 'updatedAt'])
           )

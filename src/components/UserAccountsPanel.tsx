@@ -14,9 +14,11 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from './Toast';
+import { RoleChangeConfirmModal } from './RoleChangeConfirmModal';
+import { BulkRoleChangeConfirmModal } from './BulkRoleChangeConfirmModal';
 import { ErpDataset } from '../hooks/useErpData';
 import { clampStr, db, handleFirestoreError, OperationType, sanitizeId } from '../lib/firebase';
-import { recordAuditLog } from '../lib/erpService';
+import { bulkUpdateUserRoles, recordAuditLog } from '../lib/erpService';
 import { AuditLog, ROLE_LABELS, UserProfile, UserRole } from '../types/erp';
 
 interface UserAccountsPanelProps {
@@ -59,6 +61,21 @@ export function UserAccountsPanel({ data, isSuperAdmin, onOpenBulkImport }: User
 
   // Selected user activity drawer
   const [activityTarget, setActivityTarget] = useState<UnifiedAccountRow | null>(null);
+
+  // Role change confirmation modal
+  const [pendingRoleChange, setPendingRoleChange] = useState<{
+    user: UserProfile;
+    nextRole: UserRole;
+    identifier?: string;
+    departmentName?: string;
+  } | null>(null);
+  const [savingRole, setSavingRole] = useState(false);
+
+  // Bulk role selection & confirmation modal
+  const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(() => new Set());
+  const [bulkTargetRole, setBulkTargetRole] = useState<UserRole>('lecturer');
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+  const [savingBulkRole, setSavingBulkRole] = useState(false);
 
   const deptNameById = useMemo(
     () => new Map(data.departments.map((d) => [d.id, d.name])),
@@ -207,6 +224,104 @@ export function UserAccountsPanel({ data, isSuperAdmin, onOpenBulkImport }: User
     [unifiedAccounts, groupFilter, deptFilter, statusFilter, search]
   );
 
+  const selectableAccountRows = useMemo(
+    () =>
+      filteredAccounts.filter(
+        (row): row is UnifiedAccountRow & { userDoc: UserProfile } =>
+          Boolean(row.userDoc && row.userDoc.uid !== firebaseUser?.uid)
+      ),
+    [filteredAccounts, firebaseUser?.uid]
+  );
+
+  const selectedBulkTargets = useMemo(() => {
+    const seen = new Set<string>();
+    const targets: { user: UserProfile; identifier?: string; departmentName?: string }[] = [];
+    for (const row of unifiedAccounts) {
+      if (
+        row.userDoc &&
+        row.userDoc.uid !== firebaseUser?.uid &&
+        selectedUserIds.has(row.userDoc.id) &&
+        !seen.has(row.userDoc.id)
+      ) {
+        seen.add(row.userDoc.id);
+        targets.push({
+          user: row.userDoc,
+          identifier: row.identifier,
+          departmentName: row.departmentName,
+        });
+      }
+    }
+    return targets;
+  }, [unifiedAccounts, selectedUserIds, firebaseUser?.uid]);
+
+  const allVisibleAccountsSelected =
+    selectableAccountRows.length > 0 &&
+    selectableAccountRows.every((r) => selectedUserIds.has(r.userDoc.id));
+
+  const someVisibleAccountsSelected =
+    selectableAccountRows.some((r) => selectedUserIds.has(r.userDoc.id)) && !allVisibleAccountsSelected;
+
+  const toggleAccountSelection = (userId: string) => {
+    setSelectedUserIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+  };
+
+  const toggleSelectAllVisibleAccounts = () => {
+    setSelectedUserIds((prev) => {
+      const next = new Set(prev);
+      if (allVisibleAccountsSelected) {
+        selectableAccountRows.forEach((r) => next.delete(r.userDoc.id));
+      } else {
+        selectableAccountRows.forEach((r) => next.add(r.userDoc.id));
+      }
+      return next;
+    });
+  };
+
+  const handleOpenBulkRoleModal = () => {
+    if (!isSuperAdmin || selectedBulkTargets.length === 0) return;
+    const updatableCount = selectedBulkTargets.filter((t) => t.user.role !== bulkTargetRole).length;
+    if (updatableCount === 0) {
+      showToast(
+        `All ${selectedBulkTargets.length} selected account(s) already hold the ${ROLE_LABELS[bulkTargetRole]} role.`,
+        'info'
+      );
+      return;
+    }
+    setBulkConfirmOpen(true);
+  };
+
+  const handleConfirmBulkUserRoles = async (reason: string) => {
+    if (!firebaseUser || !profile || !isSuperAdmin || selectedBulkTargets.length === 0) return;
+    setSavingBulkRole(true);
+    try {
+      const { updatedCount, skippedCount } = await bulkUpdateUserRoles(
+        selectedBulkTargets.map((t) => t.user),
+        bulkTargetRole,
+        reason,
+        { uid: firebaseUser.uid, name: profile.displayName, role: profile.role }
+      );
+      if (updatedCount > 0) {
+        showToast(
+          `Updated ${updatedCount} user${updatedCount === 1 ? '' : 's'} to ${ROLE_LABELS[bulkTargetRole]}${
+            skippedCount > 0 ? ` (${skippedCount} unchanged)` : ''
+          }.`,
+          'success'
+        );
+      } else {
+        showToast('No user roles required updating.', 'info');
+      }
+      setSelectedUserIds(new Set());
+      setBulkConfirmOpen(false);
+    } finally {
+      setSavingBulkRole(false);
+    }
+  };
+
   const summaryCounts = useMemo(
     () => ({
       total: unifiedAccounts.length,
@@ -247,7 +362,11 @@ export function UserAccountsPanel({ data, isSuperAdmin, onOpenBulkImport }: User
         { uid: firebaseUser.uid, name: profile.displayName, role: profile.role },
         'ROLE_INVITE_ISSUED',
         `role_invites/${id}`,
-        `Pre-assigned role ${inviteRole} to ${emailClean}.`
+        `Pre-assigned role ${inviteRole} to ${emailClean}.`,
+        {
+          newRole: inviteRole,
+          targetName: emailClean,
+        }
       );
       showToast(`Assigned ${ROLE_LABELS[inviteRole]} invite to ${emailClean}.`, 'success');
       setInviteEmail('');
@@ -256,26 +375,52 @@ export function UserAccountsPanel({ data, isSuperAdmin, onOpenBulkImport }: User
     }
   };
 
-  const handleChangeUserRole = async (u: UserProfile, nextRole: UserRole) => {
+  const handleRequestUserRoleChange = (
+    u: UserProfile,
+    nextRole: UserRole,
+    identifier?: string,
+    departmentName?: string
+  ) => {
     if (!firebaseUser || !profile || !isSuperAdmin) return;
     if (u.uid === firebaseUser.uid) {
       showToast('You cannot demote your own active Super Administrator account. Use Portal Role Preview in the sidebar to test other roles.', 'error');
       return;
     }
+    if (u.role === nextRole) return;
+    setPendingRoleChange({ user: u, nextRole, identifier, departmentName });
+  };
+
+  const handleConfirmUserRoleChange = async (reason: string) => {
+    if (!firebaseUser || !profile || !isSuperAdmin || !pendingRoleChange) return;
+    const { user: u, nextRole } = pendingRoleChange;
+    setSavingRole(true);
     try {
       await updateDoc(doc(db, 'users', u.id), {
         role: nextRole,
         updatedAt: new Date().toISOString(),
       });
+      const cleanReason = clampStr(reason, 240);
       await recordAuditLog(
         { uid: firebaseUser.uid, name: profile.displayName, role: profile.role },
         'USER_ROLE_CHANGED',
         `users/${u.id}`,
-        `Changed ${u.displayName} role from ${u.role} to ${nextRole}.`
+        cleanReason
+          ? `Changed ${u.displayName} role from ${u.role} to ${nextRole}. Reason: ${cleanReason}`
+          : `Changed ${u.displayName} role from ${u.role} to ${nextRole}.`,
+        {
+          previousRole: u.role,
+          newRole: nextRole,
+          targetUid: u.uid,
+          targetName: u.displayName,
+          reason: cleanReason,
+        }
       );
       showToast(`Updated ${u.displayName} to ${ROLE_LABELS[nextRole]}.`, 'success');
+      setPendingRoleChange(null);
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `users/${u.id}`);
+    } finally {
+      setSavingRole(false);
     }
   };
 
@@ -291,7 +436,13 @@ export function UserAccountsPanel({ data, isSuperAdmin, onOpenBulkImport }: User
         { uid: firebaseUser.uid, name: profile.displayName, role: profile.role },
         nextStatus === 'suspended' ? 'USER_ACCOUNT_SUSPENDED' : 'USER_ACCOUNT_REACTIVATED',
         `users/${row.userDoc.id}`,
-        `Set portal account status for ${row.displayName} (${row.identifier}) to ${nextStatus}.`
+        `Set portal account status for ${row.displayName} (${row.identifier}) to ${nextStatus}.`,
+        {
+          previousRole: row.userDoc.role,
+          newRole: row.userDoc.role,
+          targetUid: row.userDoc.uid,
+          targetName: row.displayName,
+        }
       );
       showToast(
         `${row.displayName} is now ${nextStatus === 'suspended' ? 'Suspended' : 'Active'}.`,
@@ -500,9 +651,63 @@ export function UserAccountsPanel({ data, isSuperAdmin, onOpenBulkImport }: User
               </h3>
             </div>
           </div>
+
+          {isSuperAdmin && selectedBulkTargets.length > 0 && (
+            <div className="px-5 py-3 border-b border-amber-500/30 bg-amber-500/5 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-semibold text-slate-900 dark:text-white font-mono tabular-nums">
+                  {selectedBulkTargets.length} selected
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedUserIds(new Set())}
+                  className="text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white underline underline-offset-2 whitespace-nowrap shrink-0"
+                >
+                  Clear Selection
+                </button>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  aria-label="Target role for selected accounts"
+                  value={bulkTargetRole}
+                  onChange={(e) => setBulkTargetRole(e.target.value as UserRole)}
+                  className="px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                >
+                  {(Object.keys(ROLE_LABELS) as UserRole[]).map((r) => (
+                    <option key={r} value={r}>
+                      {ROLE_LABELS[r]}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={handleOpenBulkRoleModal}
+                  className="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 transition-colors whitespace-nowrap shrink-0"
+                >
+                  Update Selected Roles ({selectedBulkTargets.length})
+                </button>
+              </div>
+            </div>
+          )}
+
           <table className="w-full text-left text-xs">
             <thead className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 text-slate-500 dark:text-slate-400">
               <tr>
+                {isSuperAdmin && (
+                  <th className="py-3 pl-4 pr-2 w-10">
+                    <input
+                      type="checkbox"
+                      aria-label="Select all selectable visible accounts"
+                      checked={allVisibleAccountsSelected}
+                      ref={(el) => {
+                        if (el) el.indeterminate = someVisibleAccountsSelected;
+                      }}
+                      disabled={selectableAccountRows.length === 0}
+                      onChange={toggleSelectAllVisibleAccounts}
+                      className="rounded border-slate-300 dark:border-slate-700 text-amber-600 focus:ring-amber-500 disabled:opacity-40"
+                    />
+                  </th>
+                )}
                 <th className="py-3 px-4 font-medium">User &amp; ID</th>
                 <th className="py-3 px-4 font-medium">Department &amp; Role</th>
                 <th className="py-3 px-4 font-medium">Account Status</th>
@@ -511,8 +716,37 @@ export function UserAccountsPanel({ data, isSuperAdmin, onOpenBulkImport }: User
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-              {filteredAccounts.map((row) => (
-                <tr key={row.rowId} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+              {filteredAccounts.map((row) => {
+                const canBulkSelect = Boolean(row.userDoc && row.userDoc.uid !== firebaseUser?.uid);
+                const isSelected = Boolean(row.userDoc && selectedUserIds.has(row.userDoc.id));
+                return (
+                <tr
+                  key={row.rowId}
+                  className={
+                    isSelected
+                      ? 'bg-amber-500/5 hover:bg-amber-500/10'
+                      : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                  }
+                >
+                  {isSuperAdmin && (
+                    <td className="py-3 pl-4 pr-2 align-middle">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${row.displayName}`}
+                        disabled={!canBulkSelect}
+                        checked={isSelected}
+                        onChange={() => row.userDoc && toggleAccountSelection(row.userDoc.id)}
+                        title={
+                          !row.userDoc
+                            ? 'No linked portal user account yet'
+                            : row.userDoc.uid === firebaseUser?.uid
+                            ? 'Your own Super Admin account is protected'
+                            : `Select ${row.displayName}`
+                        }
+                        className="rounded border-slate-300 dark:border-slate-700 text-amber-600 focus:ring-amber-500 disabled:opacity-30 disabled:cursor-not-allowed"
+                      />
+                    </td>
+                  )}
                   <td className="py-3 px-4">
                     <p className="font-semibold text-sm text-slate-900 dark:text-slate-100">{row.displayName}</p>
                     <p className="font-mono text-amber-600 dark:text-amber-400">{row.identifier}</p>
@@ -527,7 +761,14 @@ export function UserAccountsPanel({ data, isSuperAdmin, onOpenBulkImport }: User
                       ) : (
                         <select
                           value={row.userDoc.role}
-                          onChange={(e) => handleChangeUserRole(row.userDoc!, e.target.value as UserRole)}
+                          onChange={(e) =>
+                            handleRequestUserRoleChange(
+                              row.userDoc!,
+                              e.target.value as UserRole,
+                              row.identifier,
+                              row.departmentName
+                            )
+                          }
                           className="px-2 py-1 text-[11px] rounded border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
                         >
                           {(Object.keys(ROLE_LABELS) as UserRole[]).map((r) => (
@@ -617,10 +858,11 @@ export function UserAccountsPanel({ data, isSuperAdmin, onOpenBulkImport }: User
                     )}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
               {filteredAccounts.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="py-8 text-center text-slate-500">
+                  <td colSpan={isSuperAdmin ? 6 : 5} className="py-8 text-center text-slate-500">
                     No accounts match the selected filters.
                   </td>
                 </tr>
@@ -679,6 +921,26 @@ export function UserAccountsPanel({ data, isSuperAdmin, onOpenBulkImport }: User
           </div>
         </div>
       )}
+
+      <RoleChangeConfirmModal
+        open={Boolean(pendingRoleChange)}
+        targetUser={pendingRoleChange?.user ?? null}
+        nextRole={pendingRoleChange?.nextRole ?? null}
+        linkedIdentifier={pendingRoleChange?.identifier}
+        linkedDepartment={pendingRoleChange?.departmentName}
+        loading={savingRole}
+        onConfirm={handleConfirmUserRoleChange}
+        onCancel={() => !savingRole && setPendingRoleChange(null)}
+      />
+
+      <BulkRoleChangeConfirmModal
+        open={bulkConfirmOpen}
+        targets={selectedBulkTargets}
+        nextRole={bulkTargetRole}
+        loading={savingBulkRole}
+        onConfirm={handleConfirmBulkUserRoles}
+        onCancel={() => !savingBulkRole && setBulkConfirmOpen(false)}
+      />
     </div>
   );
 }

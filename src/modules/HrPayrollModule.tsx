@@ -22,8 +22,8 @@ export function HrPayrollModule({ data }: HrPayrollModuleProps) {
   const { firebaseUser, profile, effectiveRole } = useAuth();
   const { showToast } = useToast();
 
-  const isHrStaff = ['super_admin', 'management', 'hr'].includes(effectiveRole);
-  const canApprovePayroll = ['super_admin', 'management', 'finance'].includes(effectiveRole);
+  const isHrStaff = ['super_admin', 'admin', 'management', 'hr'].includes(effectiveRole);
+  const canApprovePayroll = ['super_admin', 'admin', 'management', 'finance'].includes(effectiveRole);
 
   const [tab, setTab] = useState<'payroll' | 'employees' | 'leave' | 'statutory'>('payroll');
   const [monthLabel, setMonthLabel] = useState('November 2026');
@@ -510,7 +510,7 @@ export function HrPayrollModule({ data }: HrPayrollModuleProps) {
                 onChange={(e) => setEmpPortalRole(e.target.value as Exclude<UserRole, 'super_admin' | 'applicant' | 'student'>)}
                 className="px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
               >
-                {(['lecturer', 'hod', 'exam_officer', 'finance', 'hr', 'admissions', 'management'] as const).map((r) => (
+                {(['lecturer', 'hod', 'exam_officer', 'finance', 'hr', 'admissions', 'admin', 'management'] as const).map((r) => (
                   <option key={r} value={r}>Portal Role: {ROLE_LABELS[r]}</option>
                 ))}
               </select>

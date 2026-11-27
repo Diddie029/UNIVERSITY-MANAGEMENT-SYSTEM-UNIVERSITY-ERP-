@@ -34,15 +34,24 @@ export interface ActorContext {
   role: UserRole;
 }
 
+export interface AuditLogMetadata {
+  previousRole?: string;
+  newRole?: string;
+  targetUid?: string;
+  targetName?: string;
+  reason?: string;
+}
+
 export async function recordAuditLog(
   actor: ActorContext,
   action: string,
   entityPath: string,
-  details: string
+  details: string,
+  metadata?: AuditLogMetadata
 ) {
   const id = makeId('aud');
   try {
-    await setDoc(doc(db, 'audit_logs', id), {
+    const payload: Record<string, string> = {
       actorUid: actor.uid,
       actorName: clampStr(actor.name, 160) || 'System User',
       actorRole: clampStr(actor.role, 40),
@@ -50,9 +59,73 @@ export async function recordAuditLog(
       entityPath: clampStr(entityPath, 240),
       details: clampStr(details, 1000),
       createdAt: new Date().toISOString(),
-    });
+    };
+    if (metadata?.previousRole) payload.previousRole = clampStr(metadata.previousRole, 40);
+    if (metadata?.newRole) payload.newRole = clampStr(metadata.newRole, 40);
+    if (metadata?.targetUid) payload.targetUid = clampStr(metadata.targetUid, 128);
+    if (metadata?.targetName) payload.targetName = clampStr(metadata.targetName, 160);
+    if (metadata?.reason) payload.reason = clampStr(metadata.reason, 300);
+
+    await setDoc(doc(db, 'audit_logs', id), payload);
   } catch (err) {
     handleFirestoreError(err, OperationType.CREATE, `audit_logs/${id}`);
+  }
+}
+
+export async function bulkUpdateUserRoles(
+  targets: { id: string; uid: string; displayName: string; role: UserRole }[],
+  nextRole: UserRole,
+  reason: string,
+  actor: ActorContext
+): Promise<{ updatedCount: number; skippedCount: number }> {
+  const eligible = targets.filter((u) => u.uid !== actor.uid && u.role !== nextRole);
+  const skippedCount = targets.length - eligible.length;
+  if (eligible.length === 0) {
+    return { updatedCount: 0, skippedCount };
+  }
+
+  const now = new Date().toISOString();
+  const cleanReason = clampStr(reason, 240);
+  const effectiveReason = cleanReason ? `[Bulk Update] ${cleanReason}` : 'Bulk role update by Super Admin';
+  // Each user writes 1 user update + 1 audit_log create (2 ops). Chunk at 200 users = 400 ops (< 500 batch limit).
+  const CHUNK_SIZE = 200;
+
+  try {
+    for (let i = 0; i < eligible.length; i += CHUNK_SIZE) {
+      const chunk = eligible.slice(i, i + CHUNK_SIZE);
+      const batch = writeBatch(db);
+
+      for (const user of chunk) {
+        batch.update(doc(db, 'users', user.id), {
+          role: nextRole,
+          updatedAt: now,
+        });
+
+        const auditId = makeId('aud');
+        batch.set(doc(db, 'audit_logs', auditId), {
+          actorUid: actor.uid,
+          actorName: clampStr(actor.name, 160) || 'System User',
+          actorRole: clampStr(actor.role, 40),
+          action: 'USER_ROLE_CHANGED',
+          entityPath: `users/${user.id}`,
+          details: cleanReason
+            ? `Bulk changed ${user.displayName} role from ${user.role} to ${nextRole}. Reason: ${cleanReason}`
+            : `Bulk changed ${user.displayName} role from ${user.role} to ${nextRole}.`,
+          previousRole: clampStr(user.role, 40),
+          newRole: clampStr(nextRole, 40),
+          targetUid: clampStr(user.uid, 128),
+          targetName: clampStr(user.displayName, 160),
+          reason: clampStr(effectiveReason, 300),
+          createdAt: now,
+        });
+      }
+
+      await batch.commit();
+    }
+
+    return { updatedCount: eligible.length, skippedCount };
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, 'users/bulk_role_update');
   }
 }
 

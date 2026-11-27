@@ -221,14 +221,22 @@ export function generatePayslipPDF(payslip: Payslip) {
 
 export function exportToCSV(filename: string, headers: string[], rows: (string | number | boolean)[][]) {
   const escape = (val: string | number | boolean) => {
-    const str = String(val ?? '');
-    if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+    let str = String(val ?? '');
+    // Guard against spreadsheet formula injection while preserving negative numbers
+    if (
+      typeof val === 'string' &&
+      /^[=+\-@\t\r]/.test(str) &&
+      !/^-\d+(\.\d+)?$/.test(str.trim())
+    ) {
+      str = `'${str}`;
+    }
+    if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
       return `"${str.replace(/"/g, '""')}"`;
     }
     return str;
   };
-  const csv = [headers.map(escape).join(','), ...rows.map((r) => r.map(escape).join(','))].join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const csv = [headers.map(escape).join(','), ...rows.map((r) => r.map(escape).join(','))].join('\r\n');
+  const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;

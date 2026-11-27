@@ -23,11 +23,11 @@ export function ServicesModule({ data }: ServicesModuleProps) {
   const { firebaseUser, profile, effectiveRole } = useAuth();
   const { showToast } = useToast();
 
-  const canPublishNotice = ['super_admin', 'management', 'admissions', 'lecturer', 'hod', 'exam_officer'].includes(
+  const canPublishNotice = ['super_admin', 'admin', 'management', 'admissions', 'lecturer', 'hod', 'exam_officer'].includes(
     effectiveRole
   );
-  const canManageNotices = ['super_admin', 'management'].includes(effectiveRole);
-  const canResolveTickets = ['super_admin', 'management', 'admissions', 'finance'].includes(effectiveRole);
+  const canManageNotices = ['super_admin', 'admin', 'management'].includes(effectiveRole);
+  const canResolveTickets = ['super_admin', 'admin', 'management', 'admissions', 'finance'].includes(effectiveRole);
 
   const [noticeTitle, setNoticeTitle] = useState('');
   const [noticeBody, setNoticeBody] = useState('');

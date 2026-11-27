@@ -62,8 +62,9 @@ export function StudentActivationGate({ student, data }: StudentActivationGatePr
     const now = new Date().toISOString();
 
     setActivating(true);
+    let currentOpPath = `students/${student.id}`;
     try {
-      await updateDoc(doc(db, 'students', student.id), {
+      const studentPayload: Record<string, unknown> = {
         accountActivated: true,
         activatedAt: now,
         departmentId: chosenDeptId,
@@ -74,17 +75,24 @@ export function StudentActivationGate({ student, data }: StudentActivationGatePr
         email: clampStr(email, 200),
         phone: clampStr(phone, 32),
         updatedAt: now,
-      });
+      };
+      if (!student.uid) {
+        studentPayload.uid = firebaseUser.uid;
+      }
 
+      await updateDoc(doc(db, 'students', student.id), studentPayload);
+
+      const bindingDocId = profile.bindingId || sanitizeId(student.admissionNo.toUpperCase());
       try {
-        await updateDoc(doc(db, 'portal_bindings', sanitizeId(student.admissionNo.toUpperCase())), {
+        await updateDoc(doc(db, 'portal_bindings', bindingDocId), {
           activated: true,
           activatedAt: now,
         });
       } catch {
-        // Safe if alias binding used
+        // Safe if binding was already activated or aliased
       }
 
+      currentOpPath = `users/${firebaseUser.uid}`;
       await updateDoc(doc(db, 'users', firebaseUser.uid), {
         accountActivated: true,
         departmentId: chosenDeptId,
@@ -93,6 +101,7 @@ export function StudentActivationGate({ student, data }: StudentActivationGatePr
         updatedAt: now,
       });
 
+      currentOpPath = 'audit_logs';
       await recordAuditLog(
         { uid: firebaseUser.uid, name: student.fullName, role: profile.role },
         'STUDENT_ACCOUNT_ACTIVATED',
@@ -102,7 +111,10 @@ export function StudentActivationGate({ student, data }: StudentActivationGatePr
 
       showToast(`Account ${student.admissionNo} activated! Welcome to EDUVANCE ERP.`, 'success');
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `students/${student.id}`);
+      if (currentOpPath === 'audit_logs' && err instanceof Error && err.message.startsWith('{"error":')) {
+        throw err;
+      }
+      handleFirestoreError(err, OperationType.UPDATE, currentOpPath);
     } finally {
       setActivating(false);
     }

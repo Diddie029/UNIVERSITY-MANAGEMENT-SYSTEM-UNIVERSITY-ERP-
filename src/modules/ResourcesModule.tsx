@@ -115,6 +115,7 @@ export function ResourcesModule({ data }: ResourcesModuleProps) {
   const isSuperAdmin = profile?.role === 'super_admin';
   const isAcademicStaff = [
     'super_admin',
+    'admin',
     'management',
     'lecturer',
     'hod',

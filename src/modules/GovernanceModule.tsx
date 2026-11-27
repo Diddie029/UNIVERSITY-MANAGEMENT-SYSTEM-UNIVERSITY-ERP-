@@ -4,8 +4,8 @@ import {
   Activity,
   BookOpenCheck,
   Building2,
-  FileSpreadsheet,
   ShieldAlert,
+  ShieldCheck,
   Users,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -13,11 +13,12 @@ import { useToast } from '../components/Toast';
 import { CurriculumManagerPanel } from '../components/CurriculumManagerPanel';
 import { LecturerAssignmentPanel } from '../components/LecturerAssignmentPanel';
 import { UserAccountsPanel } from '../components/UserAccountsPanel';
+import { UserRoleManagementPanel } from '../components/UserRoleManagementPanel';
+import { AuditLogsPanel } from '../components/AuditLogsPanel';
 import { SystemHealthPanel } from '../components/SystemHealthPanel';
 import { BulkStudentImportModal } from '../components/BulkStudentImportModal';
 import { ErpDataset } from '../hooks/useErpData';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
-import { exportToCSV } from '../lib/pdfGenerator';
 
 interface GovernanceModuleProps {
   data: ErpDataset;
@@ -28,7 +29,7 @@ export function GovernanceModule({ data }: GovernanceModuleProps) {
   const { showToast } = useToast();
   const isSuperAdmin = actualRole === 'super_admin' && effectiveRole === 'super_admin';
 
-  const [tab, setTab] = useState<'structure' | 'lecturers' | 'users' | 'health' | 'audit'>('structure');
+  const [tab, setTab] = useState<'structure' | 'lecturers' | 'roles' | 'users' | 'health' | 'audit'>('structure');
   const [bulkImportOpen, setBulkImportOpen] = useState(false);
 
   const handleToggleCalendarFlag = async (
@@ -54,14 +55,15 @@ export function GovernanceModule({ data }: GovernanceModuleProps) {
   }[] = [
     { id: 'structure', label: 'Depts, Courses & Units', icon: Building2 },
     { id: 'lecturers', label: 'Lecturer Assignments', icon: BookOpenCheck },
+    { id: 'roles', label: `User Roles (${data.users.length})`, icon: ShieldCheck },
     { id: 'users', label: `Active Accounts (${data.users.length + data.students.length})`, icon: Users },
     { id: 'health', label: 'System Health', icon: Activity },
-    { id: 'audit', label: `Audit Trail (${data.auditLogs.length})`, icon: ShieldAlert },
+    { id: 'audit', label: `Audit Logs (${data.auditLogs.length})`, icon: ShieldAlert },
   ];
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="flex flex-col 2xl:flex-row 2xl:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-slate-900 dark:text-white">
             Super Admin Governance, Curriculum &amp; System Health
@@ -152,7 +154,12 @@ export function GovernanceModule({ data }: GovernanceModuleProps) {
         <LecturerAssignmentPanel data={data} isSuperAdmin={isSuperAdmin} />
       )}
 
-      {/* TAB 3: Institutional User Account Management + Bulk Student Onboarding */}
+      {/* TAB 3: Safe User Role & Access Management */}
+      {tab === 'roles' && (
+        <UserRoleManagementPanel data={data} isSuperAdmin={isSuperAdmin} />
+      )}
+
+      {/* TAB 4: Institutional User Account Management + Bulk Student Onboarding */}
       {tab === 'users' && (
         <UserAccountsPanel
           data={data}
@@ -164,58 +171,8 @@ export function GovernanceModule({ data }: GovernanceModuleProps) {
       {/* TAB 4: System Health, DB Connectivity & Logs */}
       {tab === 'health' && <SystemHealthPanel data={data} />}
 
-      {/* TAB 5: Immutable Audit Logs */}
-      {tab === 'audit' && (
-        <div className="space-y-4">
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={() =>
-                exportToCSV(
-                  'EDUVANCE_Audit_Logs.csv',
-                  ['Timestamp', 'Actor', 'Role', 'Action', 'Entity', 'Details'],
-                  data.auditLogs.map((l) => [l.createdAt, l.actorName, l.actorRole, l.action, l.entityPath, l.details])
-                )
-              }
-              className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#111827]"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-amber-500" />
-              <span>Export Audit CSV</span>
-            </button>
-          </div>
-          <div className="border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-[#111827] overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 text-xs text-slate-500 dark:text-slate-400">
-                <tr>
-                  <th className="py-3 px-4 font-medium">Timestamp</th>
-                  <th className="py-3 px-4 font-medium">Actor</th>
-                  <th className="py-3 px-4 font-medium">Action</th>
-                  <th className="py-3 px-4 font-medium">Audit Details</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                {[...data.auditLogs]
-                  .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-                  .map((log) => (
-                    <tr key={log.id}>
-                      <td className="py-3 px-4 font-mono text-xs text-slate-500 whitespace-nowrap tabular-nums">
-                        {new Date(log.createdAt).toLocaleString('en-KE')}
-                      </td>
-                      <td className="py-3 px-4 text-xs">
-                        <span className="font-semibold text-slate-900 dark:text-slate-100">{log.actorName}</span>
-                        <span className="block text-slate-500">{log.actorRole}</span>
-                      </td>
-                      <td className="py-3 px-4 font-mono text-xs text-amber-600 dark:text-amber-400">
-                        {log.action}
-                      </td>
-                      <td className="py-3 px-4 text-xs text-slate-600 dark:text-slate-300">{log.details}</td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      {/* TAB 6: Immutable Audit Logs & Permission Tracking */}
+      {tab === 'audit' && <AuditLogsPanel data={data} isSuperAdmin={isSuperAdmin} />}
 
       <BulkStudentImportModal
         open={bulkImportOpen}

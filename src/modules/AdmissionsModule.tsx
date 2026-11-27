@@ -18,7 +18,7 @@ export function AdmissionsModule({ data }: AdmissionsModuleProps) {
   const { firebaseUser, profile, effectiveRole } = useAuth();
   const { showToast } = useToast();
 
-  const canReview = ['super_admin', 'management', 'admissions'].includes(effectiveRole);
+  const canReview = ['super_admin', 'admin', 'management', 'admissions'].includes(effectiveRole);
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');

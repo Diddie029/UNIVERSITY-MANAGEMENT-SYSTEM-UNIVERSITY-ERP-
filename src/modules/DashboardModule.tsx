@@ -138,7 +138,7 @@ export function DashboardModule({ data, onNavigate }: DashboardModuleProps) {
   const myPayments = myStudent ? data.payments.filter((p) => p.studentId === myStudent.id) : [];
 
   const activeCalendar = data.calendars.find((c) => c.isActive);
-  const canExportFinanceLedger = ['super_admin', 'management', 'finance'].includes(effectiveRole);
+  const canExportFinanceLedger = ['super_admin', 'admin', 'management', 'finance'].includes(effectiveRole);
   const isAcademicRole = ['lecturer', 'hod', 'exam_officer'].includes(effectiveRole);
 
   return (
@@ -499,7 +499,7 @@ export function DashboardModule({ data, onNavigate }: DashboardModuleProps) {
                     Computed strictly from verified Firestore student accounts
                   </p>
                 </div>
-                {['super_admin', 'management', 'finance'].includes(effectiveRole) && (
+                {['super_admin', 'admin', 'management', 'finance'].includes(effectiveRole) && (
                   <button
                     type="button"
                     onClick={() => onNavigate('finance')}
@@ -573,7 +573,7 @@ export function DashboardModule({ data, onNavigate }: DashboardModuleProps) {
             <div className="lg:col-span-5 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-[#111827] p-5 space-y-4">
               <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Priority Action Queues</h3>
               <div className="space-y-3 text-sm">
-                {['super_admin', 'management', 'finance'].includes(effectiveRole) && (
+                {['super_admin', 'admin', 'management', 'finance'].includes(effectiveRole) && (
                   <div className="flex items-center justify-between py-2 border-b border-slate-200 dark:border-slate-800">
                     <span className="text-slate-600 dark:text-slate-300">Paybill / Bank Verifications</span>
                     <button
@@ -585,7 +585,7 @@ export function DashboardModule({ data, onNavigate }: DashboardModuleProps) {
                     </button>
                   </div>
                 )}
-                {['super_admin', 'management', 'admissions'].includes(effectiveRole) && (
+                {['super_admin', 'admin', 'management', 'admissions'].includes(effectiveRole) && (
                   <div className="flex items-center justify-between py-2 border-b border-slate-200 dark:border-slate-800">
                     <span className="text-slate-600 dark:text-slate-300">Admission Applications</span>
                     <button
@@ -597,7 +597,7 @@ export function DashboardModule({ data, onNavigate }: DashboardModuleProps) {
                     </button>
                   </div>
                 )}
-                {['super_admin', 'management', 'hr'].includes(effectiveRole) && (
+                {['super_admin', 'admin', 'management', 'hr'].includes(effectiveRole) && (
                   <div className="flex items-center justify-between py-2">
                     <span className="text-slate-600 dark:text-slate-300">Staff Leave Requests</span>
                     <button

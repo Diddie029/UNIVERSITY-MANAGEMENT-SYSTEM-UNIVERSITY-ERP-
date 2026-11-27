@@ -242,6 +242,7 @@ export function BulkStudentImportModal({ open, data, onClose }: BulkStudentImpor
           const initialFee = Number(feeStruct?.totalFee ?? 0);
 
           batch.set(doc(db, 'students', studentId), {
+            uid: '',
             admissionNo: row.admissionNo,
             fullName: row.fullName,
             email: row.email,

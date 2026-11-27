@@ -1,5 +1,6 @@
 export type UserRole =
   | 'super_admin'
+  | 'admin'
   | 'management'
   | 'admissions'
   | 'lecturer'
@@ -448,6 +449,11 @@ export interface AuditLog {
   action: string;
   entityPath: string;
   details: string;
+  previousRole?: string;
+  newRole?: string;
+  targetUid?: string;
+  targetName?: string;
+  reason?: string;
   createdAt: string;
 }
 
@@ -723,6 +729,7 @@ export interface StudyGroupMembershipIndex {
 
 export const ROLE_LABELS: Record<UserRole, string> = {
   super_admin: 'Super Administrator',
+  admin: 'Admin',
   management: 'University Management',
   admissions: 'Admissions Officer',
   lecturer: 'Lecturer',
@@ -736,6 +743,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
 
 export const ROLE_NAV_SECTIONS: Record<UserRole, ErpSection[]> = {
   super_admin: ['dashboard', 'admissions', 'students', 'academics', 'resources', 'finance', 'hr', 'governance', 'services'],
+  admin: ['dashboard', 'admissions', 'students', 'academics', 'resources', 'finance', 'hr', 'governance', 'services'],
   management: ['dashboard', 'admissions', 'students', 'academics', 'resources', 'finance', 'hr', 'governance', 'services'],
   admissions: ['dashboard', 'admissions', 'students', 'services'],
   lecturer: ['dashboard', 'academics', 'resources', 'services'],
